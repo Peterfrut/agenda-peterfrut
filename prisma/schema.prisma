@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Booking {
+  id                 String   @id @default(cuid())
+  roomId             String
+  roomName           String
+  userName           String
+  userEmail          String
+  participantsEmails String?
+  title              String      // <<< PRECISA EXISTIR AQUI
+  date               String       // YYYY-MM-DD
+  startTime          String       // HH:MM
+  endTime            String       // HH:MM
+  createdAt          DateTime @default(now())
+
+  // NOVOS CAMPOS
+  status        String  @default("pending")   // pending | confirmed | canceled (por enquanto só usamos pending)
+  reminderSent  Boolean @default(false)
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  verified  Boolean  @default(false)
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  emailVerifiedAt DateTime?
+  role      String   @default("user") // user | admin
+
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Holiday {
+  id        String   @id @default(cuid())
+  roomId    String?  // null = feriado global (todas as salas)
+  name      String
+  date      String   // YYYY-MM-DD
+  createdAt DateTime @default(now())
+
+  @@index([roomId, date])
+  @@index([date])
+}
