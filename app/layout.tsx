@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/app/components/ui/sonner"
 import { ThemeProvider } from "./components/ThemeProvider"
 import { SpeedInsights } from "@vercel/speed-insights/next"
+import { Analytics } from "@vercel/analytics/next"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
