@@ -161,7 +161,7 @@ function RegisterPageInner() {
           /* FORMULÁRIO NORMAL */
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-2">
-              <Label htmlFor="name">Nome</Label>
+              <Label htmlFor="name">Nome Completo</Label>
               <Input
                 id="name"
                 value={name}
