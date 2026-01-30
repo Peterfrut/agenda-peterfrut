@@ -426,7 +426,7 @@ export function SchedulePage() {
                   </span>
 
                   {isRefreshingData && (
-                    <span className="text-xs text-muted-foreground">Atualizando reservas…</span>
+                    <span className="text-xs text-muted-foreground sr-only">Atualizando reservas…</span>
                   )}
 
                   <ViewToggle value={view} onChange={setView} />
