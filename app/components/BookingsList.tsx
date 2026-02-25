@@ -136,6 +136,8 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
   const currentEmail =
     me?.authenticated && me.user?.email ? me.user.email.toLowerCase() : null;
 
+  const isAdmin = (me as any)?.authenticated && (me as any)?.user?.role === "admin";
+
   const [editing, setEditing] = useState<Booking | null>(null);
   const [newStartTime, setNewStartTime] = useState("");
   const [newEndTime, setNewEndTime] = useState("");
@@ -247,6 +249,7 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
             const isOwner =
               currentEmail &&
               b.userEmail.toLowerCase() === currentEmail.toLowerCase();
+            const canManage = !!isAdmin || !!isOwner;
             return (
               <Card
                 key={b.id}
@@ -303,6 +306,18 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
                         Responsável:
                       </span>
                       <span className="text-muted-foreground">{b.userName}</span>
+                    </div>
+                    <div className="flex gap-1">
+                      <span className="font-semibold">
+                        Origem:
+                      </span>
+                      <span className="text-muted-foreground">
+                        {((b as any)?.provider === "ics"
+                          ? "Importação"
+                          : (b as any)?.provider === "google"
+                            ? "Google"
+                            : "Local")}
+                      </span>
                     </div>
                   </div>
 
@@ -362,7 +377,7 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
                   })()}
                 </div>
 
-                {isOwner && (
+                {canManage && (
                   <div className="flex items-center gap-1 pr-1">
                     <Button
                       size="icon"

@@ -19,10 +19,20 @@ model Booking {
   startTime          String       // HH:MM
   endTime            String       // HH:MM
   createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // Integrações / importações (ex.: .ics, Google)
+  provider           String   @default("local") // local | ics | google
+  externalId         String?
+  externalSource     String?
 
   // NOVOS CAMPOS
   status        String  @default("pending")   // pending | confirmed | canceled (por enquanto só usamos pending)
   reminderSent  Boolean @default(false)
+
+  @@index([roomId, date])
+  @@index([provider])
+  @@unique([provider, externalId])
 }
 
 model User {

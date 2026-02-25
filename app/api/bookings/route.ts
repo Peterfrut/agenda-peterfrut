@@ -229,6 +229,15 @@ async function getLoggedUserEmail(req: NextRequest): Promise<string | null> {
   return typeof email === "string" ? email : null;
 }
 
+async function getLoggedUser(req: NextRequest): Promise<{ email: string | null; role: string | null }> {
+  const token = getTokenFromRequest(req);
+  if (!token) return { email: null, role: null };
+  const payload = await verifyJwt(token);
+  const email = typeof (payload as any)?.email === "string" ? (payload as any).email : null;
+  const role = typeof (payload as any)?.role === "string" ? (payload as any).role : null;
+  return { email, role };
+}
+
 const MY_AGENDA_ID = "__my__";
 
 // -------------------- GET -------------------- //
@@ -275,8 +284,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const loggedEmail = await getLoggedUserEmail(req);
-    const loggedEmailNorm = normalizeEmail(loggedEmail);
+    const me = await getLoggedUser(req);
+    const loggedEmailNorm = normalizeEmail(me.email);
+    const isAdmin = me.role === "admin";
     if (!loggedEmailNorm) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
     const rl = rateLimit(`booking:create:${loggedEmailNorm}`, 10, 60_000);
@@ -429,8 +439,9 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const loggedEmail = await getLoggedUserEmail(req);
-    const loggedEmailNorm = normalizeEmail(loggedEmail);
+    const me = await getLoggedUser(req);
+    const loggedEmailNorm = normalizeEmail(me.email);
+    const isAdmin = me.role === "admin";
     if (!loggedEmailNorm) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
     const rl = rateLimit(`booking:update:${loggedEmailNorm}`, 10, 60_000);
@@ -448,7 +459,7 @@ export async function PATCH(req: NextRequest) {
     const booking = await prisma.booking.findUnique({ where: { id: data.id } });
     if (!booking) return NextResponse.json({ error: "Reserva não encontrada." }, { status: 404 });
 
-    if (normalizeEmail(booking.userEmail) !== loggedEmailNorm) {
+    if (!isAdmin && normalizeEmail(booking.userEmail) !== loggedEmailNorm) {
       return NextResponse.json(
         { error: "Você não pode remarcar uma reserva de outro usuário." },
         { status: 403 }
@@ -517,8 +528,9 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const loggedEmail = await getLoggedUserEmail(req);
-    const loggedEmailNorm = normalizeEmail(loggedEmail);
+    const me = await getLoggedUser(req);
+    const loggedEmailNorm = normalizeEmail(me.email);
+    const isAdmin = me.role === "admin";
     if (!loggedEmailNorm) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
     const rl = rateLimit(`booking:delete:${loggedEmailNorm}`, 10, 60_000);
@@ -536,7 +548,7 @@ export async function DELETE(req: NextRequest) {
     const booking = await prisma.booking.findUnique({ where: { id: data.id } });
     if (!booking) return NextResponse.json({ error: "Reserva não encontrada." }, { status: 404 });
 
-    if (normalizeEmail(booking.userEmail) !== loggedEmailNorm) {
+    if (!isAdmin && normalizeEmail(booking.userEmail) !== loggedEmailNorm) {
       return NextResponse.json(
         { error: "Você não pode excluir uma reserva de outro usuário." },
         { status: 403 }

@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
       id: payload.sub ?? null,
       email: payload.email,
       name: payload.name ?? null,
+      role: (payload as any)?.role ?? "user",
     },
   });
 }

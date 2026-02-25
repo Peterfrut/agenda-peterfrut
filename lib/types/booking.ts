@@ -5,9 +5,14 @@ export type Booking = {
   userName: string;
   userEmail: string;
   participantsEmails: string | null;
-  title: string;        // <<< AQUI
+  title: string;
   date: string;
   startTime: string;
   endTime: string;
   createdAt: string;
+
+  // Integrações / importações
+  provider?: "local" | "ics" | "google" | string;
+  externalId?: string | null;
+  externalSource?: string | null;
 };

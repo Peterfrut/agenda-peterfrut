@@ -3,8 +3,9 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
-import { LogOut } from "lucide-react";
+import { LogOut, Shield } from "lucide-react";
 import { ToggleTheme } from "./ToggleTheme";
 import { toast } from "sonner";
 
@@ -25,6 +26,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/app/components/ui/alert-dialog";
+import { set } from "date-fns";
+import { Button } from "./ui/button";
 
 const fetcher = (url: string) =>
   fetch(url).then((res) => (res.ok ? res.json() : null));
@@ -32,7 +35,7 @@ const fetcher = (url: string) =>
 export function AvatarProfile() {
   const { data: me } = useSWR<{
     authenticated: boolean;
-    user: { email: string; name: string | null; id: string | null } | null;
+    user: { email: string; name: string | null; id: string | null; role?: string } | null;
   }>("/api/auth/me", fetcher);
 
   const router = useRouter();
@@ -92,6 +95,24 @@ export function AvatarProfile() {
       </div>
 
       <div className="flex flex-col gap-1 items-center justify-center self-end">
+        {me?.user?.role === "admin" ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={() => setTimeout(() => router.push("/import/import.ics"), 500)}
+                className="text-muted-foreground hover:text-primary"
+                aria-label="Admin"
+                title="Admin"
+              >
+                <Shield className="w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Admin</p>
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+
         <Tooltip>
           <TooltipTrigger asChild>
             <div>

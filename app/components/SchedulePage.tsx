@@ -162,11 +162,13 @@ export function SchedulePage() {
 
   const { data: me } = useSWR<{
     authenticated: boolean;
-    user: { email: string; name: string | null; id: string | null } | null;
+    user: { email: string; name: string | null; id: string | null; role?: string } | null;
   }>("/api/auth/me", fetcher);
 
   const currentEmail =
     me?.authenticated && me.user?.email ? me.user.email.toLowerCase() : null;
+
+  const isAdmin = (me as any)?.authenticated && (me as any)?.user?.role === "admin";
 
   function handleRoomChange(nextRoomId?: string) {
     // Fecha painéis/diálogos imediatamente ao trocar de sala (evita "vazar" detalhes)
@@ -265,11 +267,13 @@ export function SchedulePage() {
     const userEmailLower = normalize(currentEmail);
     const ownerEmailLower = normalize(detailsBooking?.userEmail);
     return (
-      !!userEmailLower &&
-      !!ownerEmailLower &&
-      userEmailLower === ownerEmailLower
+      !!isAdmin || (
+        !!userEmailLower &&
+        !!ownerEmailLower &&
+        userEmailLower === ownerEmailLower
+      )
     );
-  }, [currentEmail, detailsBooking]);
+  }, [currentEmail, detailsBooking, isAdmin]);
 
   function openRescheduleFromDetails() {
     if (!detailsBooking) return;
@@ -584,6 +588,15 @@ export function SchedulePage() {
               <p>
                 <span className="font-semibold">Responsável:</span>{" "}
                 {detailsBooking.userName}
+              </p>
+
+              <p>
+                <span className="font-semibold">Origem:</span>{" "}
+                {(detailsBooking as any)?.provider === "ics"
+                  ? "Importação"
+                  : (detailsBooking as any)?.provider === "google"
+                    ? "Google"
+                    : "Local"}
               </p>
 
               {(() => {

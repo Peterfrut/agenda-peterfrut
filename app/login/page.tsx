@@ -23,25 +23,23 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const res = await fetch("/api/auth/login", {
+      const loginPromise = fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
+      }).then(async (res) => {
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.ok) throw new Error(json.message || "Login inválido");
+        return json;
       });
 
-      const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json.message || "Login inválido");
+      await toast.promise(loginPromise, {
+        loading: "Verificando credenciais...",
+        success: "Login efetuado com sucesso!",
+        error: (err) => err?.message || "Erro ao entrar!",
+      });
 
-      toast.promise(
-        new Promise((resolve) => setTimeout(resolve, 700)),
-        {
-          loading: "Verificando credenciais...",
-          success: "Login efetuado com sucesso!",
-          error: "Erro ao entrar!",
-        }
-      );
-
-      setTimeout(() => router.replace("/"), 2000);
+      router.replace("/");
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -72,7 +70,7 @@ export default function LoginPage() {
             type="email"
             autoComplete="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value.toLocaleLowerCase())}
+            onChange={(e) => setEmail(e.target.value.toLowerCase())}
             placeholder="Digite aqui seu email..."
           />
         </div>
@@ -88,8 +86,9 @@ export default function LoginPage() {
               value={password}
               placeholder="Escolha uma senha..."
               onChange={(e) => setPassword(e.target.value)}
-              autoComplete="new-password"
+              autoComplete="current-password"
               className="pr-10"
+
             />
 
             <Tooltip>
