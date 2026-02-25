@@ -48,6 +48,7 @@ export default function ImportIcsAdminPage() {
       const res = await fetch("/api/import/import-ics", {
         method: "POST",
         body: fd,
+        credentials: "include",
       });
 
       const json = await res.json().catch(() => null);
