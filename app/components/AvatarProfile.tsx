@@ -99,7 +99,7 @@ export function AvatarProfile() {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                onClick={() => setTimeout(() => router.push("/import/import.ics"), 500)}
+                onClick={() => setTimeout(() => router.push("/import/import-ics"), 500)}
                 className="text-muted-foreground hover:text-primary"
                 aria-label="Admin"
                 title="Admin"
