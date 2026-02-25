@@ -10,32 +10,103 @@ import { verifyJwt } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type LoggedUser = {
-  email: string;
-  role?: string;
-};
+type LoggedUser = { email: string; role?: string };
 
-async function getLoggedUser(): Promise<LoggedUser> {
+async function readToken(req: NextRequest) {
+  // cookies() na sua versão retorna Promise
   const cookieStore = await cookies();
-  const token = cookieStore.get("token")?.value ?? "";
-  if (!token) return { email: "", role: undefined };
 
-  const payload: any = verifyJwt(token);
-  return { email: payload?.email ?? "", role: payload?.role };
+  const tokenFromCookiesFn = cookieStore.get("token")?.value ?? "";
+  const tokenFromReq = req.cookies.get("token")?.value ?? "";
+
+  const token = tokenFromCookiesFn || tokenFromReq;
+
+  return {
+    token,
+    tokenFromCookiesFnLen: tokenFromCookiesFn.length,
+    tokenFromReqLen: tokenFromReq.length,
+  };
+}
+
+async function getLoggedUser(req: NextRequest): Promise<{ me: LoggedUser; diag: any }> {
+  const { token, tokenFromCookiesFnLen, tokenFromReqLen } = await readToken(req);
+
+  if (!token) {
+    return {
+      me: { email: "", role: undefined },
+      diag: {
+        reason: "no-token-cookie",
+        tokenFromCookiesFnLen,
+        tokenFromReqLen,
+        hasCookieHeader: Boolean(req.headers.get("cookie")),
+      },
+    };
+  }
+
+  try {
+    const payload: any = await verifyJwt(token);
+
+    // pega sub (id) e email (se existir)
+    const sub = String(payload?.sub ?? "").trim();
+    const emailFromToken = String(payload?.email ?? "").trim();
+    const roleFromToken = String(payload?.role ?? "").trim();
+
+    // Se tiver email direto, ok
+    if (emailFromToken) {
+      return {
+        me: { email: emailFromToken, role: roleFromToken || undefined },
+        diag: { reason: "ok-email", tokenFromCookiesFnLen, tokenFromReqLen },
+      };
+    }
+
+    // Se não tiver email, mas tiver sub, busca no banco
+    if (sub) {
+      const user = await prisma.user.findUnique({
+        where: { id: sub },
+        select: { email: true, role: true },
+      });
+
+      if (user?.email) {
+        return {
+          me: { email: user.email, role: user.role ?? undefined },
+          diag: { reason: "ok-sub-db", tokenFromCookiesFnLen, tokenFromReqLen },
+        };
+      }
+
+      return {
+        me: { email: "", role: undefined },
+        diag: { reason: "sub-not-found", sub, tokenFromCookiesFnLen, tokenFromReqLen },
+      };
+    }
+
+    // Nem email nem sub
+    return {
+      me: { email: "", role: undefined },
+      diag: {
+        reason: "payload-missing-email-and-sub",
+        payloadKeys: payload ? Object.keys(payload) : null,
+        tokenFromCookiesFnLen,
+        tokenFromReqLen,
+      },
+    };
+  } catch (e: any) {
+    return {
+      me: { email: "", role: undefined },
+      diag: {
+        reason: "verifyJwt-failed",
+        error: e?.message ?? String(e),
+        tokenFromCookiesFnLen,
+        tokenFromReqLen,
+      },
+    };
+  }
 }
 
 function toSaoPaulo(dt: Date) {
   const sp = DateTime.fromJSDate(dt, { zone: "utc" }).setZone("America/Sao_Paulo");
-  return {
-    date: sp.toISODate()!,       // YYYY-MM-DD
-    time: sp.toFormat("HH:mm"),  // HH:mm
-  };
+  return { date: sp.toISODate()!, time: sp.toFormat("HH:mm") };
 }
 
-/**
- * Evita colisão de UID em recorrência:
- * externalId = UID#RECURRENCE-ID (quando existe) senão UID#DTSTART
- */
 function getExternalIdForEvent(item: any): { uid: string; externalId: string } {
   const uid = String(item?.uid ?? "").trim();
 
@@ -53,27 +124,15 @@ function getExternalIdForEvent(item: any): { uid: string; externalId: string } {
   return { uid, externalId };
 }
 
-/**
- * Responsável:
- * 1) primeiro ATTENDEE INDIVIDUAL (CN/mailto)
- * 2) "(Nome)" no fim do SUMMARY
- * 3) "Responsável:"/"Organizador:"/"Criado por:" no DESCRIPTION
- * 4) fallback: "Reservado"
- */
 function extractResponsible(item: any): {
   userName: string;
   userEmail: string;
   participantsEmails: string | null;
 } {
   const attendeesRaw = item?.attendee;
-  const attendeesArr = Array.isArray(attendeesRaw)
-    ? attendeesRaw
-    : attendeesRaw
-      ? [attendeesRaw]
-      : [];
+  const attendeesArr = Array.isArray(attendeesRaw) ? attendeesRaw : attendeesRaw ? [attendeesRaw] : [];
 
   const participants: string[] = [];
-
   let bestName: string | null = null;
   let bestEmail: string | null = null;
 
@@ -88,7 +147,6 @@ function extractResponsible(item: any): {
 
     if (emailClean) participants.push(emailClean);
 
-    // primeiro attendee INDIVIDUAL vira "responsável"
     if (!bestEmail && cutype === "INDIVIDUAL" && (cn || emailClean)) {
       bestName = cn || null;
       bestEmail = emailClean;
@@ -113,9 +171,7 @@ function extractResponsible(item: any): {
   const userName = bestName || "Reservado";
   const userEmail = bestEmail || "unknown@import.local";
 
-  const uniqueParticipants = Array.from(
-    new Set(participants.filter((p) => p && p !== "unknown@import.local"))
-  );
+  const uniqueParticipants = Array.from(new Set(participants.filter((p) => p && p !== "unknown@import.local")));
 
   return {
     userName,
@@ -126,39 +182,32 @@ function extractResponsible(item: any): {
 
 export async function POST(req: NextRequest) {
   try {
-    // ✅ auth via cookies() (resolve 401 com multipart em Vercel)
-    const me = await getLoggedUser();
+    const { me, diag } = await getLoggedUser(req);
 
     if (!me.email) {
-      return NextResponse.json({ ok: false, message: "Não autenticado" }, { status: 401 });
+      // <<< diagnóstico controlado pra você ver exatamente o motivo >>>
+      return NextResponse.json({ ok: false, message: "Não autenticado", diag }, { status: 401 });
     }
     if (me.role !== "admin") {
-      return NextResponse.json({ ok: false, message: "Sem permissão" }, { status: 403 });
+      return NextResponse.json({ ok: false, message: "Sem permissão", role: me.role ?? null }, { status: 403 });
     }
 
     const form = await req.formData();
     const roomId = String(form.get("roomId") ?? "").trim();
     const file = form.get("file");
-    const strategy = String(form.get("strategy") ?? "replace"); // replace | merge
+    const strategy = String(form.get("strategy") ?? "replace");
     const batchSize = Number(form.get("batchSize") ?? 500);
 
-    if (!roomId) {
-      return NextResponse.json({ ok: false, message: "roomId obrigatório" }, { status: 400 });
-    }
-    if (!(file instanceof File)) {
-      return NextResponse.json({ ok: false, message: "Arquivo .ics obrigatório" }, { status: 400 });
-    }
+    if (!roomId) return NextResponse.json({ ok: false, message: "roomId obrigatório" }, { status: 400 });
+    if (!(file instanceof File)) return NextResponse.json({ ok: false, message: "Arquivo .ics obrigatório" }, { status: 400 });
 
     const text = await file.text();
     const parsed = ical.sync.parseICS(text);
 
-    const externalSource =
-      /X-WR-CALNAME:(.+)\r?\n/i.exec(text)?.[1]?.trim() ?? null;
-
+    const externalSource = /X-WR-CALNAME:(.+)\r?\n/i.exec(text)?.[1]?.trim() ?? null;
     const roomName = `Sala ${roomId}`;
 
     const toInsert: any[] = [];
-
     let skipped = 0;
     let crossDaySkipped = 0;
     let noUidSkipped = 0;
@@ -180,7 +229,6 @@ export async function POST(req: NextRequest) {
 
       const start = toSaoPaulo(item.start);
       const end = toSaoPaulo(item.end);
-
       if (start.date !== end.date) {
         crossDaySkipped++;
         continue;
@@ -206,17 +254,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // dedup por provider+externalId (protege contra duplicatas no mesmo arquivo)
-    const deduped = Array.from(
-      new Map(toInsert.map((x) => [`${x.provider}:${x.externalId}`, x])).values()
-    );
-
+    const deduped = Array.from(new Map(toInsert.map((x) => [`${x.provider}:${x.externalId}`, x])).values());
     const duplicatesRemoved = toInsert.length - deduped.length;
 
     if (strategy === "replace") {
-      await prisma.booking.deleteMany({
-        where: { provider: "ics", roomId },
-      });
+      await prisma.booking.deleteMany({ where: { provider: "ics", roomId } });
     }
 
     let inserted = 0;
@@ -224,10 +266,7 @@ export async function POST(req: NextRequest) {
 
     for (let i = 0; i < deduped.length; i += size) {
       const batch = deduped.slice(i, i + size);
-      const result = await prisma.booking.createMany({
-        data: batch,
-        skipDuplicates: true,
-      });
+      const result = await prisma.booking.createMany({ data: batch, skipDuplicates: true });
       inserted += result.count;
     }
 
@@ -245,9 +284,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (e: any) {
     console.error("ICS import failed:", e);
-    return NextResponse.json(
-      { ok: false, message: e?.message ?? "Erro ao importar ICS" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, message: e?.message ?? "Erro ao importar ICS" }, { status: 500 });
   }
 }

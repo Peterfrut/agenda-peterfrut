@@ -62,7 +62,7 @@ export default function Delete({
         <Button
           variant="destructive"
           type="button"
-          className="cursor-pointer"
+          className="cursor-pointer shrink-0"
           disabled={disabled}
           aria-label="Excluir"
           title="Excluir"

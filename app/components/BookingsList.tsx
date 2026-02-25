@@ -4,7 +4,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { RotateCcw } from "lucide-react";
+import { ArrowDown, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { MY_AGENDA_ID } from "./RoomList";
 import { Button } from "@/app/components/ui/button";
@@ -243,7 +243,7 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
         </p>
       )}
 
-      <ScrollArea className="h-[700px] pr-3">
+      <ScrollArea className="h-[calc(100vh-150px)] pr-3.5">
         <div className="flex flex-col gap-2">
           {list.map((b) => {
             const isOwner =
@@ -253,16 +253,22 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
             return (
               <Card
                 key={b.id}
-                className="flex items-center gap-2 text-sm px-2 pt-3 pb-2 min-w-0"
+                className="
+                  w-full min-w-0
+                  flex items-start justify-between gap-3
+                  rounded-xl
+                  px-3 py-3
+                  shadow-sm
+                "
               >
-                <div className="flex flex-col p-0 min-w-0 w-full">
+                <div className="flex flex-col p-0 min-w-0 flex-1">
                   <div className="flex flex-col min-w-0 w-full">
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <div className="min-w-0 w-full">
                             <div className="flex items-center gap-2 min-w-0 w-full mb-2">
-                              <span className="font-bold truncate block min-w-0 text-[14px] w-full">
+                              <span className="font-bold text-[14px] leading-snug break-words line-clamp-2">
                                 {b.title}
                               </span>
                             </div>
@@ -378,13 +384,13 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
                 </div>
 
                 {canManage && (
-                  <div className="flex items-center gap-1 pr-1">
+                  <div className="flex items-center gap-1 shrink-0">
                     <Button
                       size="icon"
                       variant="ghost"
                       title="Remarcar"
                       onClick={() => openEdit(b)}
-                      className="cursor-pointer"
+                      className="cursor-pointer shrink-0"
                     >
                       <RotateCcw className="h-4 w-4" />
                     </Button>

@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/ca
 import { Button } from "@/app/components/ui/button";
 import { Label } from "@/app/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
+import { ArrowLeft } from "lucide-react";
 
 const fetcher = (url: string) => fetch(url).then((r) => (r.ok ? r.json() : null));
 
@@ -71,7 +72,13 @@ export default function ImportIcsAdminPage() {
     <div className="max-w-3xl mx-auto p-4 space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>Admin · Importar agenda (.ics)</CardTitle>
+          <CardTitle className="flex items-center gap-2"> 
+            <Button onClick={() => router.back()}>
+              <ArrowLeft className="w-4" />
+              Voltar
+            </Button>
+            Admin · Importar agenda (.ics)
+            </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
