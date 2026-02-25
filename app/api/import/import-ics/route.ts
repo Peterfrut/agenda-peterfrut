@@ -148,6 +148,11 @@ export async function POST(req: NextRequest) {
   const form = await req.formData();
   const file = form.get("file");
   const roomId = String(form.get("roomId") ?? "");
+  // strategy:
+  // - replace (default): apaga todas as reservas importadas (provider=ics) desta sala e importa novamente.
+  //   É MUITO mais rápido e evita 504 em imports grandes.
+  // - merge: apenas cria novas (skipDuplicates). Não atualiza existentes.
+  const strategy = String(form.get("strategy") ?? "replace");
 
   if (!roomId) {
     return NextResponse.json({ error: "roomId obrigatório." }, { status: 400 });
@@ -167,9 +172,11 @@ export async function POST(req: NextRequest) {
   const sourceCalendar = /X-WR-CALNAME:(.+)\r?\n/i.exec(text)?.[1]?.trim() ?? null;
 
   let imported = 0;
-  let updated = 0;
+  let updated = 0; // mantido por compatibilidade com o front; em strategy=replace será 0
   let skipped = 0;
   const errors: Array<{ uid?: string; message: string }> = [];
+
+  const toInsert: Array<any> = [];
 
   for (const key of Object.keys(parsed)) {
     const item: any = (parsed as any)[key];
@@ -214,63 +221,59 @@ export async function POST(req: NextRequest) {
 
       const participantsEmails = attendeesEmails.length ? attendeesEmails.join(",") : null;
 
-      // Upsert por provider+externalId para evitar duplicar em reimportações
-      const existing = await prisma.booking.findUnique({
-        where: {
-          provider_externalId: {
-            provider: "ics",
-            externalId: uid,
-          },
-        },
-        select: { id: true },
+      // Guardar para insert em batch (evita 504 na Vercel)
+      toInsert.push({
+        provider: "ics",
+        externalId: uid,
+        externalSource: sourceCalendar,
+        roomId,
+        roomName: room.name,
+
+        userName: resolvedUserName,
+        userEmail: resolvedUserEmail,
+        participantsEmails,
+
+        title,
+        date,
+        startTime,
+        endTime,
+        status: "confirmed",
+        reminderSent: true,
       });
-
-      await prisma.booking.upsert({
-        where: {
-          provider_externalId: {
-            provider: "ics",
-            externalId: uid,
-          },
-        },
-        create: {
-          provider: "ics",
-          externalId: uid,
-          externalSource: sourceCalendar,
-          roomId,
-          roomName: room.name,
-
-          userName: resolvedUserName,
-          userEmail: resolvedUserEmail,
-          participantsEmails,
-
-          title,
-          date,
-          startTime,
-          endTime,
-          status: "confirmed",
-          reminderSent: true,
-        },
-        update: {
-          externalSource: sourceCalendar,
-          roomId,
-          roomName: room.name,
-          userName: resolvedUserName,
-          userEmail: resolvedUserEmail,
-          participantsEmails,
-          title,
-          date,
-          startTime,
-          endTime,
-          status: "confirmed",
-        },
-      });
-
-      if (existing) updated++;
-      else imported++;
     } catch (e: any) {
       skipped++;
       errors.push({ uid, message: e?.message ?? "Erro ao processar VEVENT" });
     }
+  }
+
+  // IMPORTAÇÃO EM BATCH
+  // Evita N queries (um upsert por evento) -> principal causa do 504.
+  // strategy=replace: apaga as reservas importadas desta sala e recria.
+  // strategy=merge: apenas cria novas (skipDuplicates). Não atualiza existentes.
+
+  const BATCH_SIZE = 500;
+
+  if (strategy === "replace") {
+    await prisma.booking.deleteMany({
+      where: {
+        provider: "ics",
+        roomId,
+      },
+    });
+
+    for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
+      const batch = toInsert.slice(i, i + BATCH_SIZE);
+      await prisma.booking.createMany({ data: batch });
+    }
+    imported = toInsert.length;
+    updated = 0;
+  } else {
+    for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
+      const batch = toInsert.slice(i, i + BATCH_SIZE);
+      const res = await prisma.booking.createMany({ data: batch, skipDuplicates: true });
+      imported += res.count;
+    }
+    updated = 0;
   }
 
   return NextResponse.json({
@@ -278,6 +281,7 @@ export async function POST(req: NextRequest) {
     roomId,
     roomName: room.name,
     sourceCalendar,
+    strategy,
     imported,
     updated,
     skipped,
