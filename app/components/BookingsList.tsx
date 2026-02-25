@@ -140,7 +140,7 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
 
   const [editing, setEditing] = useState<Booking | null>(null);
   const [newStartTime, setNewStartTime] = useState("");
-onst [newEndTime, setNewEndTime] = useState("");
+  const [newEndTime, setNewEndTime] = useState("");
   const [newDate, setNewDate] = useState(""); // ✅ data nova (YYYY-MM-DD)
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
