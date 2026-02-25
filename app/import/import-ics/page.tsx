@@ -53,12 +53,12 @@ export default function ImportIcsAdminPage() {
 
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error(json?.error || "Falha ao importar .ics");
+        throw new Error(json?.message || "Falha ao importar .ics");
       }
 
       setResult(json);
       toast.success(
-        `Importação concluída: +${json.imported} novos, ${json.updated} atualizados, ${json.skipped} ignorados.`
+        `Importação concluída: +${json.inserted} novos, ${json.updated} atualizados, ${json.skipped} ignorados.`
       );
     } catch (e: any) {
       toast.error(e?.message ?? "Erro ao importar");

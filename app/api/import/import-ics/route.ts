@@ -1,7 +1,8 @@
-// app/api/admin/import-ics/route.ts
+// app/api/import/import-ics/route.ts
 import { NextResponse, NextRequest } from "next/server";
 import * as ical from "node-ical";
 import { DateTime } from "luxon";
+import { cookies } from "next/headers";
 
 import prisma from "@/lib/prisma";
 import { verifyJwt } from "@/lib/auth";
@@ -14,8 +15,9 @@ type LoggedUser = {
   role?: string;
 };
 
-function getLoggedUser(req: NextRequest): LoggedUser {
-  const token = req.cookies.get("token")?.value ?? "";
+async function getLoggedUser(): Promise<LoggedUser> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("token")?.value ?? "";
   if (!token) return { email: "", role: undefined };
 
   const payload: any = verifyJwt(token);
@@ -31,9 +33,8 @@ function toSaoPaulo(dt: Date) {
 }
 
 /**
- * Resolve colisões de UID em recorrência:
- * - Se tiver RECURRENCE-ID, usa UID#RECURRENCE-ID
- * - Senão usa UID#DTSTART
+ * Evita colisão de UID em recorrência:
+ * externalId = UID#RECURRENCE-ID (quando existe) senão UID#DTSTART
  */
 function getExternalIdForEvent(item: any): { uid: string; externalId: string } {
   const uid = String(item?.uid ?? "").trim();
@@ -54,12 +55,10 @@ function getExternalIdForEvent(item: any): { uid: string; externalId: string } {
 
 /**
  * Responsável:
- * 1) Primeiro ATTENDEE INDIVIDUAL (CN / mailto)
- * 2) Fallback: "(Nome)" no fim do SUMMARY
- * 3) Fallback: "Responsável:" / "Organizador:" no DESCRIPTION
- * 4) Fallback final: "Reservado"
- *
- * Observação: não usamos ORGANIZER como default porque normalmente é a conta da sala.
+ * 1) primeiro ATTENDEE INDIVIDUAL (CN/mailto)
+ * 2) "(Nome)" no fim do SUMMARY
+ * 3) "Responsável:"/"Organizador:"/"Criado por:" no DESCRIPTION
+ * 4) fallback: "Reservado"
  */
 function extractResponsible(item: any): {
   userName: string;
@@ -89,6 +88,7 @@ function extractResponsible(item: any): {
 
     if (emailClean) participants.push(emailClean);
 
+    // primeiro attendee INDIVIDUAL vira "responsável"
     if (!bestEmail && cutype === "INDIVIDUAL" && (cn || emailClean)) {
       bestName = cn || null;
       bestEmail = emailClean;
@@ -107,7 +107,6 @@ function extractResponsible(item: any): {
       desc.match(/Respons[aá]vel:\s*(.+)/i) ||
       desc.match(/Organizador:\s*(.+)/i) ||
       desc.match(/Criado por:\s*(.+)/i);
-
     if (m?.[1]) bestName = m[1].trim();
   }
 
@@ -127,9 +126,10 @@ function extractResponsible(item: any): {
 
 export async function POST(req: NextRequest) {
   try {
-    const me = getLoggedUser(req);
+    // ✅ auth via cookies() (resolve 401 com multipart em Vercel)
+    const me = await getLoggedUser();
 
-    if (!me?.email) {
+    if (!me.email) {
       return NextResponse.json({ ok: false, message: "Não autenticado" }, { status: 401 });
     }
     if (me.role !== "admin") {
@@ -155,8 +155,6 @@ export async function POST(req: NextRequest) {
     const externalSource =
       /X-WR-CALNAME:(.+)\r?\n/i.exec(text)?.[1]?.trim() ?? null;
 
-    // Como suas salas vêm do lib/rooms.ts, não temos nome no banco.
-    // Se quiser, envie roomName no formData e use aqui.
     const roomName = `Sala ${roomId}`;
 
     const toInsert: any[] = [];
@@ -183,7 +181,6 @@ export async function POST(req: NextRequest) {
       const start = toSaoPaulo(item.start);
       const end = toSaoPaulo(item.end);
 
-      // Simplificação: ignora eventos que cruzam o dia
       if (start.date !== end.date) {
         crossDaySkipped++;
         continue;
@@ -209,7 +206,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Dedup por provider+externalId
+    // dedup por provider+externalId (protege contra duplicatas no mesmo arquivo)
     const deduped = Array.from(
       new Map(toInsert.map((x) => [`${x.provider}:${x.externalId}`, x])).values()
     );
@@ -227,17 +224,16 @@ export async function POST(req: NextRequest) {
 
     for (let i = 0; i < deduped.length; i += size) {
       const batch = deduped.slice(i, i + size);
-
       const result = await prisma.booking.createMany({
         data: batch,
         skipDuplicates: true,
       });
-
       inserted += result.count;
     }
 
     return NextResponse.json({
       ok: true,
+      message: "Importação concluída",
       strategy,
       externalSource,
       totalParsed: toInsert.length,
