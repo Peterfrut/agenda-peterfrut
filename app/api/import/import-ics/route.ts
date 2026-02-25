@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
+// app/api/admin/import-ics/route.ts
+import { NextResponse, NextRequest } from "next/server";
 import * as ical from "node-ical";
 import { DateTime } from "luxon";
 
-import { prisma } from "@/lib/prisma"; // ajuste se necessário
-import { verifyJwt } from "@/lib/auth"; // ajuste se necessário
-import { cookies } from "next/headers";
+import prisma from "@/lib/prisma";
+import { verifyJwt } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,10 +14,8 @@ type LoggedUser = {
   role?: string;
 };
 
-async function getLoggedUser(): Promise<LoggedUser> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("token")?.value ?? ""; // use o nome real do seu cookie
-
+function getLoggedUser(req: NextRequest): LoggedUser {
+  const token = req.cookies.get("token")?.value ?? "";
   if (!token) return { email: "", role: undefined };
 
   const payload: any = verifyJwt(token);
@@ -25,7 +23,6 @@ async function getLoggedUser(): Promise<LoggedUser> {
 }
 
 function toSaoPaulo(dt: Date) {
-  // dt vem em JS Date (UTC se o ICS tem Z)
   const sp = DateTime.fromJSDate(dt, { zone: "utc" }).setZone("America/Sao_Paulo");
   return {
     date: sp.toISODate()!,       // YYYY-MM-DD
@@ -33,9 +30,14 @@ function toSaoPaulo(dt: Date) {
   };
 }
 
+/**
+ * Resolve colisões de UID em recorrência:
+ * - Se tiver RECURRENCE-ID, usa UID#RECURRENCE-ID
+ * - Senão usa UID#DTSTART
+ */
 function getExternalIdForEvent(item: any): { uid: string; externalId: string } {
   const uid = String(item?.uid ?? "").trim();
-  // recurrenceid no node-ical pode ser Date ou string
+
   const rec =
     item?.recurrenceid instanceof Date
       ? item.recurrenceid.toISOString()
@@ -43,22 +45,33 @@ function getExternalIdForEvent(item: any): { uid: string; externalId: string } {
         ? item.recurrenceid
         : null;
 
-  const startIso =
-    item?.start instanceof Date ? item.start.toISOString() : "";
+  const startIso = item?.start instanceof Date ? item.start.toISOString() : "";
+  const instanceKey = rec && rec.length > 0 ? rec : startIso;
 
-  // Preferir RECURRENCE-ID quando existir, senão usar DTSTART.
-  const instanceKey = (rec && rec.length > 0) ? rec : startIso;
-
-  // Se por algum motivo não tiver instanceKey, cai pro UID puro (pode colidir em recorrência, mas é raro)
   const externalId = instanceKey ? `${uid}#${instanceKey}` : uid;
-
   return { uid, externalId };
 }
 
-function extractResponsible(item: any): { userName: string; userEmail: string; participantsEmails: string | null } {
-  // 1) Tenta achar ATTENDEE INDIVIDUAL como responsável (primeiro attendee individual com CN)
+/**
+ * Responsável:
+ * 1) Primeiro ATTENDEE INDIVIDUAL (CN / mailto)
+ * 2) Fallback: "(Nome)" no fim do SUMMARY
+ * 3) Fallback: "Responsável:" / "Organizador:" no DESCRIPTION
+ * 4) Fallback final: "Reservado"
+ *
+ * Observação: não usamos ORGANIZER como default porque normalmente é a conta da sala.
+ */
+function extractResponsible(item: any): {
+  userName: string;
+  userEmail: string;
+  participantsEmails: string | null;
+} {
   const attendeesRaw = item?.attendee;
-  const attendeesArr = Array.isArray(attendeesRaw) ? attendeesRaw : (attendeesRaw ? [attendeesRaw] : []);
+  const attendeesArr = Array.isArray(attendeesRaw)
+    ? attendeesRaw
+    : attendeesRaw
+      ? [attendeesRaw]
+      : [];
 
   const participants: string[] = [];
 
@@ -70,28 +83,24 @@ function extractResponsible(item: any): { userName: string; userEmail: string; p
     const cutype = String(params?.CUTYPE ?? "").toUpperCase();
     const cn = String(params?.CN ?? "").trim();
 
-    // node-ical pode guardar valor em a.val ou o próprio "mailto:..."
     const val = String(a?.val ?? a ?? "").trim();
     const email = val.toLowerCase().startsWith("mailto:") ? val.slice(7) : val;
     const emailClean = email.includes("@") ? email : null;
 
     if (emailClean) participants.push(emailClean);
 
-    // pega primeiro attendee INDIVIDUAL como responsável
     if (!bestEmail && cutype === "INDIVIDUAL" && (cn || emailClean)) {
       bestName = cn || null;
       bestEmail = emailClean;
     }
   }
 
-  // 2) Fallback: nome no final do SUMMARY: "Titulo (Nome Sobrenome)"
   const summary = String(item?.summary ?? "").trim();
   if (!bestName && summary) {
     const m = summary.match(/\(([^)]+)\)\s*$/);
     if (m?.[1]) bestName = m[1].trim();
   }
 
-  // 3) Fallback: tenta achar no DESCRIPTION (padrões comuns)
   const desc = String(item?.description ?? "").trim();
   if (!bestName && desc) {
     const m =
@@ -102,12 +111,12 @@ function extractResponsible(item: any): { userName: string; userEmail: string; p
     if (m?.[1]) bestName = m[1].trim();
   }
 
-  // 4) Último fallback: não usar organizer (porque geralmente é a própria agenda da sala)
   const userName = bestName || "Reservado";
   const userEmail = bestEmail || "unknown@import.local";
 
-  // remove duplicados e o "unknown"
-  const uniqueParticipants = Array.from(new Set(participants.filter((p) => p && p !== "unknown@import.local")));
+  const uniqueParticipants = Array.from(
+    new Set(participants.filter((p) => p && p !== "unknown@import.local"))
+  );
 
   return {
     userName,
@@ -116,11 +125,16 @@ function extractResponsible(item: any): { userName: string; userEmail: string; p
   };
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const me = await getLoggedUser();
-    if (!me?.email) return NextResponse.json({ ok: false, message: "Não autenticado" }, { status: 401 });
-    if (me.role !== "admin") return NextResponse.json({ ok: false, message: "Sem permissão" }, { status: 403 });
+    const me = getLoggedUser(req);
+
+    if (!me?.email) {
+      return NextResponse.json({ ok: false, message: "Não autenticado" }, { status: 401 });
+    }
+    if (me.role !== "admin") {
+      return NextResponse.json({ ok: false, message: "Sem permissão" }, { status: 403 });
+    }
 
     const form = await req.formData();
     const roomId = String(form.get("roomId") ?? "").trim();
@@ -128,8 +142,12 @@ export async function POST(req: Request) {
     const strategy = String(form.get("strategy") ?? "replace"); // replace | merge
     const batchSize = Number(form.get("batchSize") ?? 500);
 
-    if (!roomId) return NextResponse.json({ ok: false, message: "roomId obrigatório" }, { status: 400 });
-    if (!(file instanceof File)) return NextResponse.json({ ok: false, message: "Arquivo .ics obrigatório" }, { status: 400 });
+    if (!roomId) {
+      return NextResponse.json({ ok: false, message: "roomId obrigatório" }, { status: 400 });
+    }
+    if (!(file instanceof File)) {
+      return NextResponse.json({ ok: false, message: "Arquivo .ics obrigatório" }, { status: 400 });
+    }
 
     const text = await file.text();
     const parsed = ical.sync.parseICS(text);
@@ -137,8 +155,8 @@ export async function POST(req: Request) {
     const externalSource =
       /X-WR-CALNAME:(.+)\r?\n/i.exec(text)?.[1]?.trim() ?? null;
 
-    // sala vem do lib/rooms.ts no front, então aqui guardamos somente o roomId e um nome genérico
-    // Se você quiser o nome real, você pode enviar roomName no form também.
+    // Como suas salas vêm do lib/rooms.ts, não temos nome no banco.
+    // Se quiser, envie roomName no formData e use aqui.
     const roomName = `Sala ${roomId}`;
 
     const toInsert: any[] = [];
@@ -165,14 +183,13 @@ export async function POST(req: Request) {
       const start = toSaoPaulo(item.start);
       const end = toSaoPaulo(item.end);
 
-      // Se cruzar o dia, por simplicidade ignoramos. (Você pode evoluir depois para quebrar em 2 registros)
+      // Simplificação: ignora eventos que cruzam o dia
       if (start.date !== end.date) {
         crossDaySkipped++;
         continue;
       }
 
       const title = String(item.summary ?? "Evento").trim();
-
       const { userName, userEmail, participantsEmails } = extractResponsible(item);
 
       toInsert.push({
@@ -192,7 +209,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // Dedup em memória por provider+externalId (garante zero P2002 dentro do mesmo arquivo)
+    // Dedup por provider+externalId
     const deduped = Array.from(
       new Map(toInsert.map((x) => [`${x.provider}:${x.externalId}`, x])).values()
     );
@@ -200,20 +217,20 @@ export async function POST(req: Request) {
     const duplicatesRemoved = toInsert.length - deduped.length;
 
     if (strategy === "replace") {
-      // remove tudo importado via ICS desta sala e reimporta
       await prisma.booking.deleteMany({
         where: { provider: "ics", roomId },
       });
     }
 
-    // Inserção em batches (evita 504)
     let inserted = 0;
-    for (let i = 0; i < deduped.length; i += batchSize) {
-      const batch = deduped.slice(i, i + batchSize);
+    const size = Number.isFinite(batchSize) && batchSize > 0 ? batchSize : 500;
+
+    for (let i = 0; i < deduped.length; i += size) {
+      const batch = deduped.slice(i, i + size);
 
       const result = await prisma.booking.createMany({
         data: batch,
-        skipDuplicates: true, // protege contra duplicatas residuais
+        skipDuplicates: true,
       });
 
       inserted += result.count;
