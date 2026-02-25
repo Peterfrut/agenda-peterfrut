@@ -21,15 +21,26 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    try {
-      const res = await fetch("/api/auth/login", { 
-        method: "POST", headers: { "Content-Type": "application/json" }, 
-        body: JSON.stringify({ email, password }), 
-      });
-      const json = await res.json(); if (!res.ok || !json.ok) throw new Error(json.message || "Login inválido");
 
-      toast.promise(new Promise((resolve) => setTimeout(resolve, 700)),
-        { loading: "Verificando credenciais...", success: "Login efetuado com sucesso!", error: "Erro ao entrar!", });
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.message || "Login inválido");
+
+      toast.promise(
+        new Promise((resolve) => setTimeout(resolve, 700)),
+        {
+          loading: "Verificando credenciais...",
+          success: "Login efetuado com sucesso!",
+          error: "Erro ao entrar!",
+        }
+      );
+
       setTimeout(() => router.replace("/"), 2000);
     } catch (e: any) {
       setError(e.message);
@@ -61,7 +72,7 @@ export default function LoginPage() {
             type="email"
             autoComplete="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value.toLowerCase())}
+            onChange={(e) => setEmail(e.target.value.toLocaleLowerCase())}
             placeholder="Digite aqui seu email..."
           />
         </div>
@@ -77,9 +88,8 @@ export default function LoginPage() {
               value={password}
               placeholder="Escolha uma senha..."
               onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
+              autoComplete="new-password"
               className="pr-10"
-
             />
 
             <Tooltip>

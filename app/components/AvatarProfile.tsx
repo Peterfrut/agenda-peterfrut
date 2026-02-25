@@ -26,8 +26,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/app/components/ui/alert-dialog";
-import { set } from "date-fns";
-import { Button } from "./ui/button";
 
 const fetcher = (url: string) =>
   fetch(url).then((res) => (res.ok ? res.json() : null));
@@ -98,13 +96,17 @@ export function AvatarProfile() {
         {me?.user?.role === "admin" ? (
           <Tooltip>
             <TooltipTrigger asChild>
-                <Shield
-                onClick={() => setTimeout(() => router.push("/import/import-ics"), 500)}
-                className="text-muted-foreground hover:text-primary w-4"
-                aria-label="Importar Eventos" />
+              <Link
+                href="/admin/import-ics"
+                className="text-muted-foreground hover:text-primary"
+                aria-label="Admin"
+                title="Admin"
+              >
+                <Shield className="w-4" />
+              </Link>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p>Importar Eventos</p>
+              <p>Admin</p>
             </TooltipContent>
           </Tooltip>
         ) : null}
