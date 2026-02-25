@@ -243,7 +243,7 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
         </p>
       )}
 
-      <ScrollArea className="h-[calc(100vh-150px)] pr-3.5">
+      <ScrollArea className="h-[calc(100vh-220px)] pr-3.5">
         <div className="flex flex-col gap-2">
           {list.map((b) => {
             const isOwner =
