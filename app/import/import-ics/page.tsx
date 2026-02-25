@@ -46,7 +46,7 @@ export default function ImportIcsAdminPage() {
       fd.append("roomId", roomId);
       fd.append("file", file);
 
-      const res = await fetch("/api/admin/import-ics", {
+      const res = await fetch("/api/import/import-ics", {
         method: "POST",
         body: fd,
       });

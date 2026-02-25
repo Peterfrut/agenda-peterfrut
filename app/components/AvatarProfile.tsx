@@ -101,10 +101,10 @@ export function AvatarProfile() {
                 <Shield
                 onClick={() => setTimeout(() => router.push("/import/import-ics"), 500)}
                 className="text-muted-foreground hover:text-primary w-4"
-                aria-label="Admin" />
+                aria-label="Importar Eventos" />
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p>Admin</p>
+              <p>Importar Eventos</p>
             </TooltipContent>
           </Tooltip>
         ) : null}
