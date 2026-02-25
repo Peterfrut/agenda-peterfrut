@@ -4,6 +4,7 @@ import { DateTime } from "luxon";
 
 import { prisma } from "@/lib/prisma"; // ajuste se necessário
 import { verifyJwt } from "@/lib/auth"; // ajuste se necessário
+import { cookies } from "next/headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,9 +14,12 @@ type LoggedUser = {
   role?: string;
 };
 
-function getLoggedUser(req: Request): LoggedUser {
-  // adapte para o seu projeto. Aqui assumo que verifyJwt lê cookie/header e retorna payload
-  const token = req.headers.get("authorization")?.replace("Bearer ", "") ?? "";
+async function getLoggedUser(): Promise<LoggedUser> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("token")?.value ?? ""; // use o nome real do seu cookie
+
+  if (!token) return { email: "", role: undefined };
+
   const payload: any = verifyJwt(token);
   return { email: payload?.email ?? "", role: payload?.role };
 }
@@ -114,7 +118,7 @@ function extractResponsible(item: any): { userName: string; userEmail: string; p
 
 export async function POST(req: Request) {
   try {
-    const me = getLoggedUser(req);
+    const me = await getLoggedUser();
     if (!me?.email) return NextResponse.json({ ok: false, message: "Não autenticado" }, { status: 401 });
     if (me.role !== "admin") return NextResponse.json({ ok: false, message: "Sem permissão" }, { status: 403 });
 
