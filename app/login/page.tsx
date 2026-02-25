@@ -21,25 +21,16 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-
     try {
-      const loginPromise = fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      }).then(async (res) => {
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok || !json.ok) throw new Error(json.message || "Login inválido");
-        return json;
+      const res = await fetch("/api/auth/login", { 
+        method: "POST", headers: { "Content-Type": "application/json" }, 
+        body: JSON.stringify({ email, password }), 
       });
+      const json = await res.json(); if (!res.ok || !json.ok) throw new Error(json.message || "Login inválido");
 
-      await toast.promise(loginPromise, {
-        loading: "Verificando credenciais...",
-        success: "Login efetuado com sucesso!",
-        error: (err) => err?.message || "Erro ao entrar!",
-      });
-
-      router.replace("/");
+      toast.promise(new Promise((resolve) => setTimeout(resolve, 700)),
+        { loading: "Verificando credenciais...", success: "Login efetuado com sucesso!", error: "Erro ao entrar!", });
+      setTimeout(() => router.replace("/"), 2000);
     } catch (e: any) {
       setError(e.message);
     } finally {

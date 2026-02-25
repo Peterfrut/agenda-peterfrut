@@ -14,10 +14,10 @@ model Booking {
   userName           String
   userEmail          String
   participantsEmails String?
-  title              String      // <<< PRECISA EXISTIR AQUI
-  date               String       // YYYY-MM-DD
-  startTime          String       // HH:MM
-  endTime            String       // HH:MM
+  title              String      
+  date               String       
+  startTime          String       
+  endTime            String       
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
