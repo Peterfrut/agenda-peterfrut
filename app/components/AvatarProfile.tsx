@@ -98,14 +98,10 @@ export function AvatarProfile() {
         {me?.user?.role === "admin" ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
+                <Shield
                 onClick={() => setTimeout(() => router.push("/import/import-ics"), 500)}
-                className="text-muted-foreground hover:text-primary"
-                aria-label="Admin"
-                title="Admin"
-              >
-                <Shield className="w-4" />
-              </Button>
+                className="text-muted-foreground hover:text-primary w-4"
+                aria-label="Admin" />
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <p>Admin</p>
