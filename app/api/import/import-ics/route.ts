@@ -1,290 +1,236 @@
-import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
-import { getTokenFromRequest, verifyJwt } from "@/lib/auth";
-import { ROOMS, PERSONAL_ROOM_ID } from "@/lib/rooms";
-
+import { NextResponse } from "next/server";
 import * as ical from "node-ical";
 import { DateTime } from "luxon";
+
+import { prisma } from "@/lib/prisma"; // ajuste se necessário
+import { verifyJwt } from "@/lib/auth"; // ajuste se necessário
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type LoggedUser = {
+  email: string;
+  role?: string;
+};
+
+function getLoggedUser(req: Request): LoggedUser {
+  // adapte para o seu projeto. Aqui assumo que verifyJwt lê cookie/header e retorna payload
+  const token = req.headers.get("authorization")?.replace("Bearer ", "") ?? "";
+  const payload: any = verifyJwt(token);
+  return { email: payload?.email ?? "", role: payload?.role };
+}
+
 function toSaoPaulo(dt: Date) {
-  // Se o ICS usa "Z", dt vem como UTC. Se vier "floating", tratamos como UTC mesmo.
-  return DateTime.fromJSDate(dt, { zone: "utc" }).setZone("America/Sao_Paulo");
-}
-
-function normalizeEmail(v: unknown): string {
-  return String(v ?? "").trim().toLowerCase();
-}
-
-function extractOrganizer(item: any): { name: string | null; email: string | null } {
-  // node-ical pode trazer organizer como string, objeto { val, params }, etc.
-  const org = item?.organizer;
-  if (!org) return { name: null, email: null };
-
-  const name =
-    (org?.params?.CN as string | undefined) ??
-    (org?.cn as string | undefined) ??
-    (typeof org === "string" ? null : null);
-
-  let rawEmail: string | null =
-    (typeof org === "string" ? org : null) ??
-    (typeof org?.val === "string" ? org.val : null) ??
-    (typeof org?.email === "string" ? org.email : null);
-
-  if (rawEmail) rawEmail = rawEmail.replace(/^mailto:/i, "");
-
-  const email = rawEmail ? normalizeEmail(rawEmail) : null;
-  return { name: name ? String(name).trim() : null, email };
-}
-
-function extractAttendeesEmails(item: any): string[] {
-  const a = item?.attendee ?? item?.attendees;
-  const out: string[] = [];
-
-  const pushEmail = (v: any) => {
-    if (!v) return;
-    let raw: string | null =
-      (typeof v === "string" ? v : null) ??
-      (typeof v?.val === "string" ? v.val : null) ??
-      (typeof v?.email === "string" ? v.email : null);
-    if (!raw) return;
-    raw = raw.replace(/^mailto:/i, "");
-    const e = normalizeEmail(raw);
-    if (e) out.push(e);
+  // dt vem em JS Date (UTC se o ICS tem Z)
+  const sp = DateTime.fromJSDate(dt, { zone: "utc" }).setZone("America/Sao_Paulo");
+  return {
+    date: sp.toISODate()!,       // YYYY-MM-DD
+    time: sp.toFormat("HH:mm"),  // HH:mm
   };
-
-  if (Array.isArray(a)) a.forEach(pushEmail);
-  else if (a) pushEmail(a);
-
-  // dedupe
-  return Array.from(new Set(out));
 }
 
-function extractBestResponsible(item: any, sourceCalendar: string | null): { name: string | null; email: string | null } {
-  // No ICS do Google, ORGANIZER geralmente é a própria agenda (sala/conta).
-  // Quem criou/é responsável costuma aparecer como ATTENDEE com CUTYPE=INDIVIDUAL e CN.
-  const org = extractOrganizer(item);
+function getExternalIdForEvent(item: any): { uid: string; externalId: string } {
+  const uid = String(item?.uid ?? "").trim();
+  // recurrenceid no node-ical pode ser Date ou string
+  const rec =
+    item?.recurrenceid instanceof Date
+      ? item.recurrenceid.toISOString()
+      : typeof item?.recurrenceid === "string"
+        ? item.recurrenceid
+        : null;
 
-  const calendarHint = normalizeEmail(sourceCalendar);
-  const organizerEmail = normalizeEmail(org.email);
+  const startIso =
+    item?.start instanceof Date ? item.start.toISOString() : "";
 
-  const attendees = item?.attendee ?? item?.attendees;
-  const arr = Array.isArray(attendees) ? attendees : attendees ? [attendees] : [];
+  // Preferir RECURRENCE-ID quando existir, senão usar DTSTART.
+  const instanceKey = (rec && rec.length > 0) ? rec : startIso;
 
-  // 1) Preferir attendee INDIVIDUAL com CN e email que não seja a própria agenda
-  for (const a of arr) {
-    const cutype = String(a?.params?.CUTYPE ?? a?.params?.cutype ?? "").toUpperCase();
-    const cn = String(a?.params?.CN ?? a?.params?.cn ?? "").trim();
-    let raw =
-      (typeof a === "string" ? a : null) ??
-      (typeof a?.val === "string" ? a.val : null) ??
-      (typeof a?.email === "string" ? a.email : null);
-    if (raw) raw = raw.replace(/^mailto:/i, "");
-    const email = raw ? normalizeEmail(raw) : "";
+  // Se por algum motivo não tiver instanceKey, cai pro UID puro (pode colidir em recorrência, mas é raro)
+  const externalId = instanceKey ? `${uid}#${instanceKey}` : uid;
 
-    const isCalendarEmail = (calendarHint && email === calendarHint) || (organizerEmail && email === organizerEmail);
-    const isIndividual = cutype === "INDIVIDUAL" || cutype === ""; // alguns exports não incluem CUTYPE
+  return { uid, externalId };
+}
 
-    if (isIndividual && !isCalendarEmail) {
-      return {
-        name: cn || null,
-        email: email || null,
-      };
+function extractResponsible(item: any): { userName: string; userEmail: string; participantsEmails: string | null } {
+  // 1) Tenta achar ATTENDEE INDIVIDUAL como responsável (primeiro attendee individual com CN)
+  const attendeesRaw = item?.attendee;
+  const attendeesArr = Array.isArray(attendeesRaw) ? attendeesRaw : (attendeesRaw ? [attendeesRaw] : []);
+
+  const participants: string[] = [];
+
+  let bestName: string | null = null;
+  let bestEmail: string | null = null;
+
+  for (const a of attendeesArr) {
+    const params = a?.params ?? {};
+    const cutype = String(params?.CUTYPE ?? "").toUpperCase();
+    const cn = String(params?.CN ?? "").trim();
+
+    // node-ical pode guardar valor em a.val ou o próprio "mailto:..."
+    const val = String(a?.val ?? a ?? "").trim();
+    const email = val.toLowerCase().startsWith("mailto:") ? val.slice(7) : val;
+    const emailClean = email.includes("@") ? email : null;
+
+    if (emailClean) participants.push(emailClean);
+
+    // pega primeiro attendee INDIVIDUAL como responsável
+    if (!bestEmail && cutype === "INDIVIDUAL" && (cn || emailClean)) {
+      bestName = cn || null;
+      bestEmail = emailClean;
     }
   }
 
-  // 2) Fallback: usar nome no final do SUMMARY: "... (Nome)"
-  const rawTitle = String(item?.summary ?? "").trim();
-  const fallbackName = extractNameFromTrailingParentheses(rawTitle);
-  if (fallbackName) {
-    return { name: fallbackName, email: null };
+  // 2) Fallback: nome no final do SUMMARY: "Titulo (Nome Sobrenome)"
+  const summary = String(item?.summary ?? "").trim();
+  if (!bestName && summary) {
+    const m = summary.match(/\(([^)]+)\)\s*$/);
+    if (m?.[1]) bestName = m[1].trim();
   }
 
-  // 3) Fallback: tentar extrair do DESCRIPTION
-  const desc = String(item?.description ?? "");
-  const m = /(?:respons[aá]vel|organizador|organizer|created by)\s*:\s*([^\n\r]+)/i.exec(desc);
-  if (m?.[1]) {
-    const n = m[1].trim();
-    if (n) return { name: n, email: null };
+  // 3) Fallback: tenta achar no DESCRIPTION (padrões comuns)
+  const desc = String(item?.description ?? "").trim();
+  if (!bestName && desc) {
+    const m =
+      desc.match(/Respons[aá]vel:\s*(.+)/i) ||
+      desc.match(/Organizador:\s*(.+)/i) ||
+      desc.match(/Criado por:\s*(.+)/i);
+
+    if (m?.[1]) bestName = m[1].trim();
   }
 
-  // 4) Último fallback: se organizer tem nome que não pareça ser a agenda
-  const organizerName = (org.name ?? "").trim();
-  if (organizerName && organizerName.toLowerCase() !== (sourceCalendar ?? "").trim().toLowerCase()) {
-    return org;
-  }
+  // 4) Último fallback: não usar organizer (porque geralmente é a própria agenda da sala)
+  const userName = bestName || "Reservado";
+  const userEmail = bestEmail || "unknown@import.local";
 
-  return { name: null, email: null };
+  // remove duplicados e o "unknown"
+  const uniqueParticipants = Array.from(new Set(participants.filter((p) => p && p !== "unknown@import.local")));
+
+  return {
+    userName,
+    userEmail,
+    participantsEmails: uniqueParticipants.length ? uniqueParticipants.join(",") : null,
+  };
 }
 
-function extractNameFromTrailingParentheses(title: string): string | null {
-  const m = /\(([^)]+)\)\s*$/.exec(title);
-  if (!m) return null;
-  const name = m[1]?.trim();
-  return name ? name : null;
-}
+export async function POST(req: Request) {
+  try {
+    const me = getLoggedUser(req);
+    if (!me?.email) return NextResponse.json({ ok: false, message: "Não autenticado" }, { status: 401 });
+    if (me.role !== "admin") return NextResponse.json({ ok: false, message: "Sem permissão" }, { status: 403 });
 
-function stripTrailingParentheses(title: string): string {
-  return title.replace(/\s*\([^)]*\)\s*$/, "").trim();
-}
-async function requireAdmin(req: NextRequest) {
-  const token = getTokenFromRequest(req);
-  if (!token) return { ok: false as const, res: NextResponse.json({ error: "Não autenticado." }, { status: 401 }) };
+    const form = await req.formData();
+    const roomId = String(form.get("roomId") ?? "").trim();
+    const file = form.get("file");
+    const strategy = String(form.get("strategy") ?? "replace"); // replace | merge
+    const batchSize = Number(form.get("batchSize") ?? 500);
 
-  const payload = await verifyJwt(token);
-  const role = (payload as any)?.role;
-  if (!payload || role !== "admin") {
-    return { ok: false as const, res: NextResponse.json({ error: "Acesso negado." }, { status: 403 }) };
-  }
-  return { ok: true as const };
-}
+    if (!roomId) return NextResponse.json({ ok: false, message: "roomId obrigatório" }, { status: 400 });
+    if (!(file instanceof File)) return NextResponse.json({ ok: false, message: "Arquivo .ics obrigatório" }, { status: 400 });
 
-export async function POST(req: NextRequest) {
-  const auth = await requireAdmin(req);
-  if (!auth.ok) return auth.res;
+    const text = await file.text();
+    const parsed = ical.sync.parseICS(text);
 
-  const form = await req.formData();
-  const file = form.get("file");
-  const roomId = String(form.get("roomId") ?? "");
-  // strategy:
-  // - replace (default): apaga todas as reservas importadas (provider=ics) desta sala e importa novamente.
-  //   É MUITO mais rápido e evita 504 em imports grandes.
-  // - merge: apenas cria novas (skipDuplicates). Não atualiza existentes.
-  const strategy = String(form.get("strategy") ?? "replace");
+    const externalSource =
+      /X-WR-CALNAME:(.+)\r?\n/i.exec(text)?.[1]?.trim() ?? null;
 
-  if (!roomId) {
-    return NextResponse.json({ error: "roomId obrigatório." }, { status: 400 });
-  }
+    // sala vem do lib/rooms.ts no front, então aqui guardamos somente o roomId e um nome genérico
+    // Se você quiser o nome real, você pode enviar roomName no form também.
+    const roomName = `Sala ${roomId}`;
 
-  const room = ROOMS.find((r) => r.id === roomId);
-  if (!room || roomId === PERSONAL_ROOM_ID) {
-    return NextResponse.json({ error: "Sala inválida para importação." }, { status: 400 });
-  }
+    const toInsert: any[] = [];
 
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: "Arquivo .ics (file) obrigatório." }, { status: 400 });
-  }
+    let skipped = 0;
+    let crossDaySkipped = 0;
+    let noUidSkipped = 0;
 
-  const text = await file.text();
-  const parsed = ical.sync.parseICS(text);
-  const sourceCalendar = /X-WR-CALNAME:(.+)\r?\n/i.exec(text)?.[1]?.trim() ?? null;
+    for (const key of Object.keys(parsed)) {
+      const item: any = (parsed as any)[key];
+      if (!item || item.type !== "VEVENT") continue;
 
-  let imported = 0;
-  let updated = 0; // mantido por compatibilidade com o front; em strategy=replace será 0
-  let skipped = 0;
-  const errors: Array<{ uid?: string; message: string }> = [];
-
-  const toInsert: Array<any> = [];
-
-  for (const key of Object.keys(parsed)) {
-    const item: any = (parsed as any)[key];
-    if (!item || item.type !== "VEVENT") continue;
-
-    // Ignora entradas sem start/end
-    if (!(item.start instanceof Date) || !(item.end instanceof Date)) {
-      skipped++;
-      continue;
-    }
-
-    const uid = String(item.uid ?? "").trim();
-    if (!uid) {
-      skipped++;
-      continue;
-    }
-
-    try {
-      const start = toSaoPaulo(item.start);
-      const end = toSaoPaulo(item.end);
-
-      // Se cruzar meia-noite, você pode optar por quebrar em 2 reservas.
-      // Para manter simples e previsível, pulamos esses casos.
-      if (start.toISODate() !== end.toISODate()) {
+      if (!(item.start instanceof Date) || !(item.end instanceof Date)) {
         skipped++;
         continue;
       }
 
-      const date = start.toISODate()!; // YYYY-MM-DD
-      const startTime = start.toFormat("HH:mm");
-      const endTime = end.toFormat("HH:mm");
+      const { uid, externalId } = getExternalIdForEvent(item);
+      if (!uid || !externalId) {
+        noUidSkipped++;
+        continue;
+      }
 
-      const rawTitle = String(item.summary ?? "Evento").trim() || "Evento";
+      const start = toSaoPaulo(item.start);
+      const end = toSaoPaulo(item.end);
 
-      const attendeesEmails = extractAttendeesEmails(item);
-      const best = extractBestResponsible(item, sourceCalendar);
-      const resolvedUserName = (best.name ?? "Reservado").trim();
-      const resolvedUserEmail = best.email ?? (attendeesEmails[0] ?? "import@calendar.local");
+      // Se cruzar o dia, por simplicidade ignoramos. (Você pode evoluir depois para quebrar em 2 registros)
+      if (start.date !== end.date) {
+        crossDaySkipped++;
+        continue;
+      }
 
-      // Título: manter exatamente como veio do Google (o usuário pediu isso)
-      const title = rawTitle;
+      const title = String(item.summary ?? "Evento").trim();
 
-      const participantsEmails = attendeesEmails.length ? attendeesEmails.join(",") : null;
+      const { userName, userEmail, participantsEmails } = extractResponsible(item);
 
-      // Guardar para insert em batch (evita 504 na Vercel)
       toInsert.push({
         provider: "ics",
-        externalId: uid,
-        externalSource: sourceCalendar,
+        externalId,
+        externalSource,
         roomId,
-        roomName: room.name,
-
-        userName: resolvedUserName,
-        userEmail: resolvedUserEmail,
-        participantsEmails,
-
+        roomName,
         title,
-        date,
-        startTime,
-        endTime,
+        date: start.date,
+        startTime: start.time,
+        endTime: end.time,
         status: "confirmed",
-        reminderSent: true,
+        userName,
+        userEmail,
+        participantsEmails,
       });
-    } catch (e: any) {
-      skipped++;
-      errors.push({ uid, message: e?.message ?? "Erro ao processar VEVENT" });
     }
-  }
 
-  // IMPORTAÇÃO EM BATCH
-  // Evita N queries (um upsert por evento) -> principal causa do 504.
-  // strategy=replace: apaga as reservas importadas desta sala e recria.
-  // strategy=merge: apenas cria novas (skipDuplicates). Não atualiza existentes.
+    // Dedup em memória por provider+externalId (garante zero P2002 dentro do mesmo arquivo)
+    const deduped = Array.from(
+      new Map(toInsert.map((x) => [`${x.provider}:${x.externalId}`, x])).values()
+    );
 
-  const BATCH_SIZE = 500;
+    const duplicatesRemoved = toInsert.length - deduped.length;
 
-  if (strategy === "replace") {
-    await prisma.booking.deleteMany({
-      where: {
-        provider: "ics",
-        roomId,
-      },
+    if (strategy === "replace") {
+      // remove tudo importado via ICS desta sala e reimporta
+      await prisma.booking.deleteMany({
+        where: { provider: "ics", roomId },
+      });
+    }
+
+    // Inserção em batches (evita 504)
+    let inserted = 0;
+    for (let i = 0; i < deduped.length; i += batchSize) {
+      const batch = deduped.slice(i, i + batchSize);
+
+      const result = await prisma.booking.createMany({
+        data: batch,
+        skipDuplicates: true, // protege contra duplicatas residuais
+      });
+
+      inserted += result.count;
+    }
+
+    return NextResponse.json({
+      ok: true,
+      strategy,
+      externalSource,
+      totalParsed: toInsert.length,
+      inserted,
+      duplicatesRemoved,
+      skipped,
+      crossDaySkipped,
+      noUidSkipped,
     });
-
-    for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
-      const batch = toInsert.slice(i, i + BATCH_SIZE);
-      await prisma.booking.createMany({ data: batch });
-    }
-    imported = toInsert.length;
-    updated = 0;
-  } else {
-    for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
-      const batch = toInsert.slice(i, i + BATCH_SIZE);
-      const res = await prisma.booking.createMany({ data: batch, skipDuplicates: true });
-      imported += res.count;
-    }
-    updated = 0;
+  } catch (e: any) {
+    console.error("ICS import failed:", e);
+    return NextResponse.json(
+      { ok: false, message: e?.message ?? "Erro ao importar ICS" },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({
-    ok: true,
-    roomId,
-    roomName: room.name,
-    sourceCalendar,
-    strategy,
-    imported,
-    updated,
-    skipped,
-    errors: errors.slice(0, 50),
-  });
 }
