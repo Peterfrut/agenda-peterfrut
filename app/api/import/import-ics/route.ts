@@ -129,12 +129,23 @@ function extractResponsible(item: any): {
   userEmail: string;
   participantsEmails: string | null;
 } {
-  const attendeesRaw = item?.attendee;
-  const attendeesArr = Array.isArray(attendeesRaw) ? attendeesRaw : attendeesRaw ? [attendeesRaw] : [];
-
   const participants: string[] = [];
-  let bestName: string | null = null;
+
+  // Primeiro: nome no final do SUMMARY: "Titulo (Nome Sobrenome)"
+  const summary = String(item?.summary ?? "").trim();
+  const summaryNameMatch = summary.match(/\(([^)]+)\)\s*$/);
+  const nameFromSummary = summaryNameMatch?.[1]?.trim() || null;
+
+  //Attendees (para coletar emails e tentar pegar email do responsável)
+  const attendeesRaw = item?.attendee;
+  const attendeesArr = Array.isArray(attendeesRaw)
+    ? attendeesRaw
+    : attendeesRaw
+      ? [attendeesRaw]
+      : [];
+
   let bestEmail: string | null = null;
+  let bestCn: string | null = null;
 
   for (const a of attendeesArr) {
     const params = a?.params ?? {};
@@ -147,31 +158,38 @@ function extractResponsible(item: any): {
 
     if (emailClean) participants.push(emailClean);
 
-    if (!bestEmail && cutype === "INDIVIDUAL" && (cn || emailClean)) {
-      bestName = cn || null;
+    // pega o primeiro INDIVIDUAL como "candidato" a responsável
+    if (!bestEmail && cutype === "INDIVIDUAL" && emailClean) {
       bestEmail = emailClean;
+      bestCn = cn || null;
     }
   }
 
-  const summary = String(item?.summary ?? "").trim();
-  if (!bestName && summary) {
-    const m = summary.match(/\(([^)]+)\)\s*$/);
-    if (m?.[1]) bestName = m[1].trim();
-  }
-
+  // Description fallback
   const desc = String(item?.description ?? "").trim();
-  if (!bestName && desc) {
+  let nameFromDesc: string | null = null;
+  if (desc) {
     const m =
       desc.match(/Respons[aá]vel:\s*(.+)/i) ||
       desc.match(/Organizador:\s*(.+)/i) ||
       desc.match(/Criado por:\s*(.+)/i);
-    if (m?.[1]) bestName = m[1].trim();
+    if (m?.[1]) nameFromDesc = m[1].trim();
   }
 
-  const userName = bestName || "Reservado";
+  // Escolha do NOME (prioridade: SUMMARY > CN > DESCRIPTION > "Reservado")
+  const userName =
+    nameFromSummary ||
+    bestCn ||
+    nameFromDesc ||
+    "Reservado";
+
+  // Email (se não houver, coloca placeholder)
   const userEmail = bestEmail || "unknown@import.local";
 
-  const uniqueParticipants = Array.from(new Set(participants.filter((p) => p && p !== "unknown@import.local")));
+  // remove duplicados e placeholder
+  const uniqueParticipants = Array.from(
+    new Set(participants.filter((p) => p && p !== "unknown@import.local"))
+  );
 
   return {
     userName,
@@ -185,7 +203,6 @@ export async function POST(req: NextRequest) {
     const { me, diag } = await getLoggedUser(req);
 
     if (!me.email) {
-      // <<< diagnóstico controlado pra você ver exatamente o motivo >>>
       return NextResponse.json({ ok: false, message: "Não autenticado", diag }, { status: 401 });
     }
     if (me.role !== "admin") {
