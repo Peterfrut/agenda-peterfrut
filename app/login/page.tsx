@@ -17,37 +17,60 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
+async function handleSubmit(e: React.FormEvent) {
+  e.preventDefault();
+  setLoading(true);
+  setError(null);
 
-    try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+      credentials: "include",
+    });
+
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.ok) throw new Error(json?.message || "Login inválido");
+
+    toast.loading("Entrando...");
+
+    // espera o cookie ser “enxergado” pelo servidor e /me retornar autenticado
+    const maxWaitMs = 8000;
+    const start = Date.now();
+
+    while (Date.now() - start < maxWaitMs) {
+      const meRes = await fetch("/api/auth/me", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
       });
 
-      const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json.message || "Login inválido");
-
-      toast.promise(
-        new Promise((resolve) => setTimeout(resolve, 700)),
-        {
-          loading: "Verificando credenciais...",
-          success: "Login efetuado com sucesso!",
-          error: "Erro ao entrar!",
+      if (meRes.ok) {
+        const meJson = await meRes.json().catch(() => null);
+        if (meJson?.authenticated) {
+          toast.dismiss();
+          toast.success("Login efetuado com sucesso!");
+          router.replace("/");
+          return;
         }
-      );
+      }
 
-      setTimeout(() => router.replace("/"), 2000);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
+      // espera 250ms e tenta de novo
+      await new Promise((r) => setTimeout(r, 250));
     }
+
+    // se estourar o tempo, navega mesmo assim
+    toast.dismiss();
+    toast.success("Login efetuado!");
+    router.replace("/");
+  } catch (e: any) {
+    toast.dismiss();
+    setError(e.message);
+  } finally {
+    setLoading(false);
   }
+}
   const [showPassword, setShowPassword] = useState(false);
 
   return (
