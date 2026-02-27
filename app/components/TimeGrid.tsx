@@ -1,5 +1,6 @@
 "use client";
 
+import { toMins } from "@/lib/formatters";
 import { WORK_START_MIN, WORK_END_MIN } from "@/lib/rooms";
 import type { Booking } from "@/lib/types/booking";
 import { cn } from "@/lib/utils";
@@ -11,11 +12,6 @@ type Holiday = {
   roomId: string | null;
   source?: "national" | string;
 };
-
-function toMins(hhmm: string) {
-  const [h, m] = hhmm.split(":").map(Number);
-  return h * 60 + m;
-}
 
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));

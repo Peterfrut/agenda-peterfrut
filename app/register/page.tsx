@@ -82,31 +82,6 @@ function RegisterPageInner() {
 
     setError(null);
 
-    if (!name.trim()) {
-      setError("Informe seu nome.");
-      return;
-    }
-
-    if (!email.trim()) {
-      setError("Informe seu e-mail.");
-      return;
-    }
-
-    if (!password) {
-      setError("Informe sua senha.");
-      return;
-    }
-
-    if (password !== confirm) {
-      setError("As senhas não conferem");
-      return;
-    }
-
-    if (!password.trim() || password.length < 6) {
-      setError("Informe uma senha com pelo menos 6 caracteres.");
-      return;
-    }
-
     setLoading(true);
     try {
       const res = await fetch("/api/auth/register", {

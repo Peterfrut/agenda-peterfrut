@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-
-function normToken(v: unknown) {
-  return String(v ?? "").trim();
-}
+import { normalizeToken } from "@/lib/formatters";
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const token = normToken(body?.token);
+    const token = normalizeToken(body?.token);
 
     if (!token) {
       return NextResponse.json({ ok: false, code: "INVALID", message: "Token inválido." }, { status: 400 });

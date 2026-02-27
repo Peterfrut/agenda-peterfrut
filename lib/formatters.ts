@@ -22,6 +22,23 @@ export const defaultEmail = (fullName?: string) => {
   return `${first}.${last}@peterfrut.com.br`;
 };
 
+export function isPeterfrutEmail(email: string) {
+  return email.endsWith("@peterfrut.com.br");
+}
+
+export function normEmail(v: unknown) {
+  return String(v ?? "").trim().toLowerCase();
+}
+
+
+export function splitEmails(raw: unknown): string[] {
+  const s = String(raw ?? "");
+  return s
+    .split(/[,\n;]+/g)
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 export const defaultPassword = (fullName?: string) => {
   if (!fullName) return "";
 
@@ -36,8 +53,8 @@ export const defaultPassword = (fullName?: string) => {
   return `${firstLetter}${firstLastLetter}*25ptf`;
 };
 
-export const isValidEmail = (value: string) => {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)
+export function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email);
 }
 
 export function normalizeEmailList(input: string): string {
@@ -92,4 +109,28 @@ export function parseEmailList(input: string): {
   return { emails: unique, invalid };
 }
 
+export function validatePassword(password: string): boolean {
+  const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{10,}$/;
+  return passwordRegex.test(password);
+}
 
+export function normalizeToken(v: unknown) {
+  return String(v ?? "").trim();
+}
+
+export function parseTimeToMinutes(hhmm: string) {
+  const [hh, mm] = hhmm.split(":").map((x) => Number(x));
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return NaN;
+  return hh * 60 + mm;
+}
+
+export function isStep30Minutes(hhmm: string) {
+  const mins = parseTimeToMinutes(hhmm);
+  if (!Number.isFinite(mins)) return false;
+  return mins % 30 === 0;
+}
+
+export function toMins(hhmm: string) {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}

@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-
-function normalizeToken(v: unknown) {
-  return String(v ?? "").trim();
-}
+import { normalizeToken } from "@/lib/formatters";
 
 export async function GET(req: NextRequest) {
   try {

@@ -9,38 +9,15 @@ import { getTokenFromRequest, verifyJwt } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 
 import { addDays, addMonths, addWeeks, format, getDay, parseISO } from "date-fns";
+import { isStep30Minutes, isValidEmail, normEmail, splitEmails } from "@/lib/formatters";
 
 // ===================================
 // Helpers: normalização e validação
 // ===================================
 
-function normalizeEmail(v: unknown) {
-  return String(v ?? "").trim().toLowerCase();
-}
 
-function splitEmails(raw: unknown): string[] {
-  const s = String(raw ?? "");
-  return s
-    .split(/[,\n;]+/g)
-    .map((x) => x.trim().toLowerCase())
-    .filter(Boolean);
-}
 
-function isValidEmail(email: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email);
-}
 
-function parseTimeToMinutes(hhmm: string) {
-  const [hh, mm] = hhmm.split(":").map((x) => Number(x));
-  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return NaN;
-  return hh * 60 + mm;
-}
-
-function isStep30Minutes(hhmm: string) {
-  const mins = parseTimeToMinutes(hhmm);
-  if (!Number.isFinite(mins)) return false;
-  return mins % 30 === 0;
-}
 
 // ===================================
 // Recorrência
@@ -252,7 +229,7 @@ export async function GET(req: NextRequest) {
 
   if (scope === "my") {
     const email = await getLoggedUserEmail(req);
-    const emailNorm = normalizeEmail(email);
+    const emailNorm = normEmail(email);
     if (!emailNorm) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
     const where: any = {
@@ -285,7 +262,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const me = await getLoggedUser(req);
-    const loggedEmailNorm = normalizeEmail(me.email);
+    const loggedEmailNorm = normEmail(me.email);
     const isAdmin = me.role === "admin";
     if (!loggedEmailNorm) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
@@ -440,7 +417,7 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const me = await getLoggedUser(req);
-    const loggedEmailNorm = normalizeEmail(me.email);
+    const loggedEmailNorm = normEmail(me.email);
     const isAdmin = me.role === "admin";
     if (!loggedEmailNorm) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
@@ -459,7 +436,7 @@ export async function PATCH(req: NextRequest) {
     const booking = await prisma.booking.findUnique({ where: { id: data.id } });
     if (!booking) return NextResponse.json({ error: "Reserva não encontrada." }, { status: 404 });
 
-    if (!isAdmin && normalizeEmail(booking.userEmail) !== loggedEmailNorm) {
+    if (!isAdmin && normEmail(booking.userEmail) !== loggedEmailNorm) {
       return NextResponse.json(
         { error: "Você não pode remarcar uma reserva de outro usuário." },
         { status: 403 }
@@ -529,7 +506,7 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const me = await getLoggedUser(req);
-    const loggedEmailNorm = normalizeEmail(me.email);
+    const loggedEmailNorm = normEmail(me.email);
     const isAdmin = me.role === "admin";
     if (!loggedEmailNorm) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
@@ -548,7 +525,7 @@ export async function DELETE(req: NextRequest) {
     const booking = await prisma.booking.findUnique({ where: { id: data.id } });
     if (!booking) return NextResponse.json({ error: "Reserva não encontrada." }, { status: 404 });
 
-    if (!isAdmin && normalizeEmail(booking.userEmail) !== loggedEmailNorm) {
+    if (!isAdmin && normEmail(booking.userEmail) !== loggedEmailNorm) {
       return NextResponse.json(
         { error: "Você não pode excluir uma reserva de outro usuário." },
         { status: 403 }

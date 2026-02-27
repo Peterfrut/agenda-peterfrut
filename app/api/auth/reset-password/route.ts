@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-
-function normalizeToken(v: unknown) {
-  return String(v ?? "").trim();
-}
+import { normalizeToken } from "@/lib/formatters";
 
 export async function POST(req: Request) {
   try {

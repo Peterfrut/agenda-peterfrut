@@ -4,14 +4,7 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { rateLimit } from "@/lib/rate-limit";
 import { sendEmailVerification } from "@/lib/verify-email-mail";
-
-function normEmail(v: unknown) {
-  return String(v ?? "").trim().toLowerCase();
-}
-
-function isPeterfrutEmail(email: string) {
-  return email.endsWith("@peterfrut.com.br");
-}
+import { isPeterfrutEmail, normEmail, validatePassword } from "@/lib/formatters";
 
 function getClientIp(req: NextRequest) {
   const xff = req.headers.get("x-forwarded-for");
@@ -21,13 +14,12 @@ function getClientIp(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
 
-
   // Ex.: 5 cadastros/min por IP
   const rl = rateLimit(`register:ip:${ip}`, 5, 60_000);
   if (!rl.ok) {
     const retryAfter = Math.ceil((rl.resetAt - Date.now()) / 1000);
     return NextResponse.json(
-      { ok: false, message: `Muitas tentativas. Tente novamente em ${retryAfter}s.`},
+      { ok: false, message: `Muitas tentativas. Tente novamente em ${retryAfter}s.` },
       { status: 429, headers: { "Retry-After": String(retryAfter) } }
     );
   }
@@ -50,9 +42,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (password.length < 6) {
+    if (!password || !validatePassword(password)) {
       return NextResponse.json(
-        { ok: false, message: "A senha deve ter pelo menos 6 caracteres." },
+        {
+          ok: false,
+          message: "Verifique a senha inserida! A senha deve ter no mínimo 10 caracteres, conter 1 letra maiúscula, 1 número e 1 símbolo."
+        },
         { status: 400 }
       );
     }

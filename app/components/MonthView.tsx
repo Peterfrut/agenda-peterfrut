@@ -2,7 +2,6 @@
 
 import type { Booking } from "@/lib/types/booking";
 
-
 import {
   addDays,
   endOfMonth,

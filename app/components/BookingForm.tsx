@@ -14,7 +14,7 @@ import {
   toISODateOnly,
   isWithinWorkingHours,
 } from "@/lib/time";
-import { isValidEmail } from "@/lib/formatters";
+import { isValidEmail, normEmail } from "@/lib/formatters";
 import { WORK_END_MIN, WORK_START_MIN } from "@/lib/rooms";
 import { MY_AGENDA_ID } from "./RoomList";
 
@@ -29,13 +29,9 @@ type Props = {
 
 const fetcher = (url: string) => fetch(url).then((res) => (res.ok ? res.json() : null));
 
-function normalizeEmail(s: string) {
-  return s.trim().toLowerCase();
-}
-
 /** Converte lista de emails em string "a@a.com, b@b.com" para manter compatibilidade com API atual */
 function emailsToCommaString(list: string[]): string | null {
-  const unique = Array.from(new Set(list.map(normalizeEmail).filter(Boolean)));
+  const unique = Array.from(new Set(list.map(normEmail).filter(Boolean)));
   return unique.length ? unique.join(", ") : null;
 }
 
@@ -56,7 +52,7 @@ export function BookingForm({ roomId, date, onDateChange, onCreated }: Props) {
   const [participantsError, setParticipantsError] = useState<string | null>(null);
 
   function addParticipant(raw: string) {
-    const email = normalizeEmail(raw);
+    const email = normEmail(raw);
     if (!email) return;
 
     if (!isValidEmail(email)) {
@@ -110,7 +106,7 @@ export function BookingForm({ roomId, date, onDateChange, onCreated }: Props) {
   useEffect(() => {
     if (me?.user) {
       setUserName(me.user.name ?? "");
-      setUserEmail(normalizeEmail(me.user.email ?? ""));
+      setUserEmail(normEmail(me.user.email ?? ""));
     }
   }, [me]);
 
@@ -261,7 +257,7 @@ export function BookingForm({ roomId, date, onDateChange, onCreated }: Props) {
 
     // Se o bloco está aberto e existe texto digitado, tenta adicionar antes de enviar
     if (showParticipants && participantDraft.trim()) {
-      const email = normalizeEmail(participantDraft);
+      const email = normEmail(participantDraft);
       if (!isValidEmail(email)) {
         setFormError("Complete o e-mail do participante corretamente ou limpe o campo.");
         return;

@@ -2,10 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { randomBytes } from "crypto";
 import { sendEmailVerification } from "@/lib/verify-email-mail";
-
-function normEmail(v: unknown) {
-  return String(v ?? "").trim().toLowerCase();
-}
+import { normEmail } from "@/lib/formatters";
 
 export async function POST(req: Request) {
   try {
