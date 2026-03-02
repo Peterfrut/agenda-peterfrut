@@ -23,6 +23,7 @@ import logo from "@/public/logo_peterfrut.png";
 
 import type { Booking } from "@/lib/types/booking";
 import { ROOMS } from "@/lib/rooms";
+import ImportPage from "@/app/import/page";
 
 import { BookingForm } from "./BookingForm";
 import { BookingsList } from "./BookingsList";
@@ -369,6 +370,8 @@ export function SchedulePage() {
                     <CalendarPlus className="h-4 w-4" />
                     Criar agendamento
                   </Button>
+
+
                 </div>
 
                 <Calendar
@@ -383,7 +386,11 @@ export function SchedulePage() {
                   className="w-full"
                 />
 
-                <h2 className="font-semibold text-xl">Salas</h2>
+                <div className="flex justify-between items-center">
+                  <h2 className="font-semibold text-xl">Salas</h2>
+                  <ImportPage></ImportPage>
+                </div>
+
                 <RoomList value={roomId} onChange={handleRoomChange} />
               </div>
 
@@ -610,11 +617,11 @@ export function SchedulePage() {
                 const participantsArray: string[] = Array.isArray(raw)
                   ? raw.map((e) => normalize(String(e))).filter(Boolean)
                   : typeof raw === "string"
-                  ? raw
+                    ? raw
                       .split(/[,;\n]/g)
                       .map((e) => normalize(e))
                       .filter(Boolean)
-                  : [];
+                    : [];
 
                 const ownerEmailLower = normalize((detailsBooking as any)?.userEmail);
                 const isOwner =
