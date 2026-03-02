@@ -48,6 +48,7 @@ export default function RootLayout({
         >
           {children}
           <SpeedInsights />
+          <Analytics/>
           <Toaster position="top-center" />
         </ThemeProvider>
       </body>
