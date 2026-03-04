@@ -63,7 +63,7 @@ export function TimeGrid({
     )
   `;
 
-  const gridTemplateColumns = `80px repeat(${days.length}, minmax(220px, 1fr))`;
+  const gridTemplateColumns = `50px repeat(${days.length}, minmax(170px, 1fr))`;
 
   return (
     <div className="w-full overflow-auto">
@@ -72,7 +72,7 @@ export function TimeGrid({
         className="grid sticky top-0 bg-background z-20 border-b border-border"
         style={{ gridTemplateColumns }}
       >
-        <div className="p-2 text-xs text-muted-foreground flex items-center">
+        <div className="p-2 text-[9px] text-muted-foreground flex items-center">
           GMT-03
         </div>
 
@@ -84,7 +84,7 @@ export function TimeGrid({
               type="button"
               className={cn(
                 "p-2 text-center border-l border-border transition",
-                selected ? "bg-zinc-950 text-white" : "hover:bg-muted"
+                selected ? "bg-primary/90 text-white" : "hover:bg-muted"
               )}
               onClick={() => onDaySelect?.(d.date)}
               title="Selecionar dia"
@@ -109,7 +109,7 @@ export function TimeGrid({
         {days.map((d) => {
           const hs = holidays.filter((h) => h.date === d.date);
           return (
-            <div key={d.date} className="p-2 min-h-[48px] border-l border-border">
+            <div key={d.date} className="text-center sticky p-2 border-l border-border">
               {hs.map((h) => (
                 <div
                   key={h.id}

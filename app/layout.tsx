@@ -41,13 +41,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
           <SidebarProvider defaultOpen={false}>
             <div className="flex min-h-dvh w-full">
-              <AppSidebar />
-
               <main className="flex-1 w-full">
                 <div className="lg:hidden p-2">
                   <SidebarTrigger />
                 </div>
-
                 {children}
               </main>
             </div>

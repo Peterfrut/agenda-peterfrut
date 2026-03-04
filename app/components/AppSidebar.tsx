@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import {
   Sidebar,
@@ -7,46 +7,34 @@ import {
   SidebarGroup,
   SidebarHeader,
   SidebarRail,
-} from "@/app/components/ui/sidebar"
+  useSidebar,
+} from "@/app/components/ui/sidebar";
 
-import { AvatarProfile } from "./AvatarProfile"
-import Logo from "./Logo"
-import { MY_AGENDA_ID, RoomList } from "./RoomList"
-import { useState } from "react"
-import type { Booking } from "@/lib/types/booking"
+import { AvatarProfile } from "./AvatarProfile";
+import Logo from "./Logo";
+import { RoomList } from "./RoomList";
 
-const DEFAULT_ROOM_ID = MY_AGENDA_ID
+type Props = {
+  roomId?: string;
+  onRoomChange: (nextRoomId?: string) => void;
+};
 
-export function AppSidebar() {
-  const [roomId, setRoomId] = useState<string | undefined>(DEFAULT_ROOM_ID)
-
-  const [, setBookingPanelOpen] = useState(false)
-  const [, setDetailsBooking] = useState<Booking | null>(null)
-  const [, setRescheduleOpen] = useState(false)
-  const [, setDetailsError] = useState<string | null>(null)
-  const [roomSwitching, setRoomSwitching] = useState(false)
+export function AppSidebar({ roomId, onRoomChange }: Props) {
+  const { setOpenMobile } = useSidebar(); // <- importante (fecha o offcanvas no mobile)
 
   function handleRoomChange(nextRoomId?: string) {
-    setBookingPanelOpen(false)
-    setDetailsBooking(null)
-    setRescheduleOpen(false)
-    setDetailsError(null)
-    setRoomSwitching(true)
-    setRoomId(nextRoomId)
+    onRoomChange(nextRoomId);     // <- muda a sala na SchedulePage
+    setOpenMobile(false);         // <- fecha o menu mobile
   }
 
   return (
-    <Sidebar
-      collapsible="offcanvas"
-      variant="sidebar"
-      className="lg:hidden"
-    >
+    <Sidebar collapsible="offcanvas" variant="sidebar" className="lg:hidden">
       <SidebarHeader>
         <AvatarProfile />
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup className={roomSwitching ? "pointer-events-none opacity-60" : ""}>
+        <SidebarGroup>
           <RoomList value={roomId} onChange={handleRoomChange} />
         </SidebarGroup>
       </SidebarContent>
@@ -55,8 +43,7 @@ export function AppSidebar() {
         <Logo />
       </SidebarFooter>
 
-      {/* rail para alternar/arrastar clique e ajudar UX do collapse */}
       <SidebarRail />
     </Sidebar>
-  )
+  );
 }

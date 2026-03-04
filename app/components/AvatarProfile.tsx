@@ -8,12 +8,7 @@ import { LogOut, Shield } from "lucide-react";
 import { ToggleTheme } from "./ToggleTheme";
 import { toast } from "sonner";
 
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/app/components/ui/tooltip";
-
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/app/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,15 +21,13 @@ import {
   AlertDialogTrigger,
 } from "@/app/components/ui/alert-dialog";
 
-const fetcher = (url: string) =>
-  fetch(url).then((res) => (res.ok ? res.json() : null));
+type MeResponse = {
+  authenticated: boolean;
+  user: { email: string; name: string | null; id: string | null; role?: string } | null;
+};
 
 export function AvatarProfile() {
-  const { data: me } = useSWR<{
-    authenticated: boolean;
-    user: { email: string; name: string | null; id: string | null; role?: string } | null;
-  }>("/api/auth/me", fetcher);
-
+  const { data: me, isLoading } = useSWR<MeResponse>("/api/auth/me");
   const router = useRouter();
 
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -47,28 +40,22 @@ export function AvatarProfile() {
     setConfirmOpen(false);
 
     try {
-      // 1)  remove o cookie
-      const res = await fetch("/api/auth/logout", { method: "POST" });
+      const res = await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
       if (!res.ok) {
         let msg = "Erro ao sair";
         try {
           const j = await res.json();
           msg = j?.error || j?.message || msg;
-        } catch { }
+        } catch {}
         throw new Error(msg);
       }
 
-      // 2) toast + espera 2s (sem derrubar o token ainda)
-      await toast.promise(
-        new Promise((resolve) => setTimeout(resolve, 700)),
-        {
-          loading: "Saindo...",
-          success: "Logout efetuado com sucesso!",
-          error: "Erro ao sair",
-        }
-      );
+      await toast.promise(new Promise((resolve) => setTimeout(resolve, 700)), {
+        loading: "Saindo...",
+        success: "Logout efetuado com sucesso!",
+        error: "Erro ao sair",
+      });
 
-      // 3) e só então navega
       setTimeout(() => router.replace("/login"), 2000);
     } catch (e: any) {
       toast.error(e?.message ?? "Erro ao sair");
@@ -76,19 +63,26 @@ export function AvatarProfile() {
       setLoggingOut(false);
     }
   }
+
+  const displayName = isLoading ? "Carregando..." : (me?.user?.name ?? "");
+  const displayEmail = isLoading ? "" : (me?.user?.email ?? "").toLowerCase();
+  const initial = me?.user?.name?.slice(0, 1).toLocaleUpperCase() ?? "?";
+
   return (
     <div className="flex items-center lg:gap-2 w-full">
       <div className="w-full flex gap-1 lg:gap-2 items-center">
         <Avatar className="w-10 h-10 lg:w-12 lg:h-12 cursor-pointer flex items-center justify-center">
           <AvatarFallback className="bg-secondary-foreground text-muted font-bold text-xs md:text-2xl flex items-center justify-center">
-            {me?.user?.name?.slice(0, 1).toLocaleUpperCase() ?? "?"}
+            {initial}
           </AvatarFallback>
         </Avatar>
 
         <div className="flex flex-col min-w-0">
-          <span className="text-[14px] lg:text-base font-semibold truncate">{me?.user?.name ?? ""}</span>
+          <span className="text-[14px] lg:text-base font-semibold truncate">
+            {displayName}
+          </span>
           <span className="text-xs lg:text-[13px] text-muted-foreground truncate">
-            {(me?.user?.email ?? "").toLowerCase()}
+            {displayEmail}
           </span>
         </div>
       </div>
@@ -126,10 +120,9 @@ export function AvatarProfile() {
               <AlertDialogTrigger asChild>
                 <button type="button" disabled={loggingOut}>
                   <LogOut
-                    className={`w-4 cursor-pointer ${loggingOut
-                      ? "opacity-40"
-                      : "text-muted-foreground hover:text-primary"
-                      }`}
+                    className={`w-4 cursor-pointer ${
+                      loggingOut ? "opacity-40" : "text-muted-foreground hover:text-primary"
+                    }`}
                   />
                 </button>
               </AlertDialogTrigger>
@@ -142,9 +135,7 @@ export function AvatarProfile() {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Confirmar logout</AlertDialogTitle>
-              <AlertDialogDescription>
-                Tem certeza que deseja sair do sistema?
-              </AlertDialogDescription>
+              <AlertDialogDescription>Tem certeza que deseja sair do sistema?</AlertDialogDescription>
             </AlertDialogHeader>
 
             <AlertDialogFooter>

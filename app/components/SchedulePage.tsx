@@ -350,11 +350,22 @@ export function SchedulePage() {
 
   return (
     <main className="min-h-screen bg-background">
+      <Button
+        className="w-12 h-12 cursor-pointer lg:hidden flex fixed bottom-0 right-0 z-20 rounded-full m-4 items-center justify-center shadow-lg"
+        onClick={() => {
+          setBookingPanelOpen(true);
+          setDetailsBooking(null);
+        }}
+        disabled={!roomId}
+      >
+        <CalendarPlus className="h-4 w-4" />
+      </Button>
+
       <div className="py-4 px-4">
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[280px_minmax(0,1fr)_280px]">
           {/* COLUNA ESQUERDA */}
           <div className="">
-            <AppSidebar/>
+            <AppSidebar roomId={roomId} onRoomChange={handleRoomChange} />
             <Card className="hidden lg:flex flex-col border-0 shadow-none bg-transparent h-full justify-between p-0 ">
               <div className="flex flex-col gap-2.5">
                 <AvatarProfile />
@@ -391,7 +402,7 @@ export function SchedulePage() {
                 <RoomList value={roomId} onChange={handleRoomChange} />
               </div>
 
-              <Logo/>
+              <Logo />
             </Card>
           </div>
 
