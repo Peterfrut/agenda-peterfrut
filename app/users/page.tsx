@@ -79,7 +79,6 @@ export default function UserInfos() {
 
     const [saving, setSaving] = useState(false);
 
-    // 👇 controla edição somente dentro do modal
     const [isEditing, setIsEditing] = useState(false);
     const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -90,7 +89,6 @@ export default function UserInfos() {
         setRole(u.role === "admin" ? "admin" : "user");
         setUserVerified(!!u.emailVerifiedAt);
 
-        // 🔒 sempre abre travado
         setIsEditing(false);
         setConfirmOpen(false);
     }
@@ -130,9 +128,8 @@ export default function UserInfos() {
             if (!res.ok || !j?.ok) throw new Error(j?.message || "Erro ao salvar");
 
             toast.success("Usuário atualizado!");
-            await mutate(); // recarrega lista
-
-            // ✅ fecha e reseta tudo
+            await mutate();
+            
             closeEdit();
         } catch (e: any) {
             toast.error(e?.message ?? "Erro");
@@ -141,7 +138,6 @@ export default function UserInfos() {
         }
     }
 
-    // Confirmar no AlertDialog: chama o saveEdit real
     async function handleConfirmSave() {
         setConfirmOpen(false);
         await saveEdit();
@@ -260,7 +256,6 @@ export default function UserInfos() {
                                                 <td className="p-3">{u.name ?? "-"}</td>
                                                 <td className="p-3">{u.email}</td>
 
-                                                {/* Email verificado */}
                                                 <td className="p-3">
                                                     <Badge
                                                         className={`flex items-center gap-2 px-2 py-1 text-xs uppercase font-medium rounded-md ${emailInfo.bg} ${emailInfo.text}`}
@@ -269,8 +264,7 @@ export default function UserInfos() {
                                                         {emailInfo.label}
                                                     </Badge>
                                                 </td>
-
-                                                {/* Role */}
+                                                
                                                 <td className="p-3">
                                                     <Badge
                                                         className={`flex items-center gap-2 px-2 py-1 text-xs uppercase font-medium rounded-md ${roleInfo.bg} ${roleInfo.text}`}
@@ -415,7 +409,6 @@ export default function UserInfos() {
                         </Button>
                     </DialogFooter>
 
-                    {/* ✅ ALERTA DE CONFIRMAÇÃO (só aparece ao clicar em Salvar) */}
                     <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
                         <AlertDialogContent>
                             <AlertDialogHeader>

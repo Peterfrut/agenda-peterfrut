@@ -4,7 +4,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ArrowDown, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { MY_AGENDA_ID } from "./RoomList";
 import { Button } from "@/app/components/ui/button";
@@ -233,9 +233,9 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
         <p className="text-sm text-muted-foreground">Carregando reservas...</p>
       )}
 
-      {!isLoading && isValidating && (
+       {/*!isLoading && isValidating && (
         <p className="text-xs text-muted-foreground">Atualizando…</p>
-      )}
+      )*/}
 
       {!isLoading && list.length === 0 && (
         <p className="text-sm text-muted-foreground">
@@ -268,7 +268,7 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
                         <TooltipTrigger asChild>
                           <div className="min-w-0 w-full">
                             <div className="flex items-center gap-2 min-w-0 w-full mb-2">
-                              <span className="font-bold text-[14px] leading-snug break-words line-clamp-2">
+                              <span className="font-bold text-[14px] leading-snug wrap-break-word line-clamp-2">
                                 {b.title}
                               </span>
                             </div>
@@ -305,8 +305,8 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-
-                  <div className="flex flex-col text-[13px]">
+ 
+                  <div className="flex flex-col text-[13px] ">
                     <div className="flex gap-1">
                       <span className="font-semibold">
                         Responsável:
@@ -384,7 +384,7 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
                 </div>
 
                 {canManage && (
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex items-center justify-center w-full gap-1 shrink-0">
                     <Button
                       size="icon"
                       variant="ghost"

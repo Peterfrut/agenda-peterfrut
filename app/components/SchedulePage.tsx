@@ -19,8 +19,6 @@ import {
   RotateCcw,
 } from "lucide-react";
 
-import logo from "@/public/logo_peterfrut.png";
-
 import type { Booking } from "@/lib/types/booking";
 import { ROOMS } from "@/lib/rooms";
 import ImportPage from "@/app/import/page";
@@ -34,6 +32,7 @@ import { AvatarProfile } from "./AvatarProfile";
 import { CalendarDayIcon } from "./CalendarIcon";
 import { ViewToggle, type ViewMode } from "./ViewToggle";
 import { TimeGrid } from "./TimeGrid";
+import { AppSidebar } from "./AppSidebar";
 
 import { Card } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
@@ -48,6 +47,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/app/components/ui/dialog";
+import Logo from "./Logo";
 
 type Holiday = {
   id: string;
@@ -353,26 +353,23 @@ export function SchedulePage() {
       <div className="py-4 px-4">
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[280px_minmax(0,1fr)_280px]">
           {/* COLUNA ESQUERDA */}
-          <div className="space-y-4">
-            <Card className="flex flex-col border-0 shadow-none gap-3 bg-transparent h-full justify-between">
-              <div>
+          <div className="">
+            <AppSidebar/>
+            <Card className="hidden lg:flex flex-col border-0 shadow-none bg-transparent h-full justify-between p-0 ">
+              <div className="flex flex-col gap-2.5">
                 <AvatarProfile />
 
-                <div className="space-y-2 mt-3">
-                  <Button
-                    className="w-full justify-center gap-2 cursor-pointer"
-                    onClick={() => {
-                      setBookingPanelOpen(true);
-                      setDetailsBooking(null);
-                    }}
-                    disabled={!roomId}
-                  >
-                    <CalendarPlus className="h-4 w-4" />
-                    Criar agendamento
-                  </Button>
-
-
-                </div>
+                <Button
+                  className="w-full cursor-pointer"
+                  onClick={() => {
+                    setBookingPanelOpen(true);
+                    setDetailsBooking(null);
+                  }}
+                  disabled={!roomId}
+                >
+                  <CalendarPlus className="h-4 w-4" />
+                  Criar agendamento
+                </Button>
 
                 <Calendar
                   mode="single"
@@ -394,23 +391,17 @@ export function SchedulePage() {
                 <RoomList value={roomId} onChange={handleRoomChange} />
               </div>
 
-              <div className="w-full flex flex-col items-center justify-center">
-                <img src={logo.src} alt="" className="w-26" />
-                <p className="text-xs text-muted-foreground text-center">
-                  ©{new Date().getFullYear()} Peterfrut – Todos os direitos
-                  reservados.
-                </p>
-              </div>
+              <Logo/>
             </Card>
           </div>
 
           {/* COLUNA CENTRAL */}
           <Card className="flex flex-col pb-0 pt-4 relative">
             <div className="flex flex-wrap items-center justify-between mx-4 p-0">
-              <div className="flex items-center gap-2 justify-between w-full">
+              <div className="flex flex-col  xl:flex-row items-center gap-2 justify-between w-full">
                 <div className="flex items-center gap-3 self-center">
                   <CalendarDayIcon day={dayNumber} />
-                  <h1 className="text-4xl font-bold tracking-tight">
+                  <h1 className="text-xl md:text-2xl lg:text-3xl xl:text-2xl 2xl:text-4xl font-bold tracking-tight">
                     {roomTitle}
                   </h1>
 
@@ -424,13 +415,13 @@ export function SchedulePage() {
                   </Button>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center lg:gap-3">
                   <ChevronLeft
                     onClick={goPrev}
-                    className="h-6 w-6 cursor-pointer"
+                    className="h-4 w-4 xl:h-6 xl:w-6 cursor-pointer"
                   />
 
-                  <span className="font-semibold text-xl">
+                  <span className="font-semibold text-xs md:text-[16px] 2xl:text-lg">
                     {format(currentMonth, "MMMM 'de' yyyy", {
                       locale: ptBR,
                     }).replace(/^./, (c) => c.toUpperCase())}
@@ -444,7 +435,7 @@ export function SchedulePage() {
 
                   <ChevronRight
                     onClick={goNext}
-                    className="h-6 w-6 cursor-pointer"
+                    className="h-4 w-4 xl:h-6 xl:w-6 cursor-pointer"
                   />
                 </div>
               </div>
@@ -512,7 +503,7 @@ export function SchedulePage() {
           </Card>
 
           {/* COLUNA DIREITA */}
-          <Card className="py-4 pl-4 pr-1 tracking-tight flex flex-col gap-3 bg-zinc-950">
+          <Card className="py-4 pl-4 pr-1 tracking-tight flex flex-col gap-3 bg-secondary-foreground/90">
             <div className="flex items-center justify-center">
               <h2 className="font-semibold text-xl text-white">
                 Horários Agendados

@@ -1,20 +1,22 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
+import type { Metadata } from "next"
+import { Geist, Geist_Mono } from "next/font/google"
+import "./globals.css"
 import { Toaster } from "@/app/components/ui/sonner"
 import { ThemeProvider } from "./components/ThemeProvider"
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Analytics } from "@vercel/analytics/next"
+import { SidebarProvider, SidebarTrigger } from "@/app/components/ui/sidebar"
+import { AppSidebar } from "@/app/components/AppSidebar"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
-});
+})
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
-});
+})
 
 export const metadata: Metadata = {
   title: "Agenda Peterfrut",
@@ -24,14 +26,10 @@ export const metadata: Metadata = {
   icons: {
     icon: "../Logo.ico",
     apple: "/pwa/icon-192.png",
-  }
-};
+  },
+}
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <head>
@@ -40,18 +38,26 @@ export default function RootLayout({
       </head>
 
       <body className="bg-background text-foreground">
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="light"
-          enableSystem
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+          <SidebarProvider defaultOpen={false}>
+            <div className="flex min-h-dvh w-full">
+              <AppSidebar />
 
-        >
-          {children}
+              <main className="flex-1 w-full">
+                <div className="lg:hidden p-2">
+                  <SidebarTrigger />
+                </div>
+
+                {children}
+              </main>
+            </div>
+          </SidebarProvider>
+
           <SpeedInsights />
-          <Analytics/>
+          <Analytics />
           <Toaster position="top-center" />
         </ThemeProvider>
       </body>
     </html>
-  );
+  )
 }

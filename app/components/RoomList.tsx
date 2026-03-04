@@ -8,12 +8,12 @@ type Props = {
 
 export function RoomList({ value, onChange }: Props) {
   return (
-    <div className="space-y-2">
+    <div className="">
       {/* Minha agenda (virtual) */}
       <button
         type="button"
         onClick={() => onChange(MY_AGENDA_ID)}
-        className={`w-full text-left rounded-md px-3 py-2 text-sm border ${
+        className={`w-full text-left px-3 py-3 text-sm border-b ${
           value === MY_AGENDA_ID
             ? "bg-primary text-primary-foreground"
             : "bg-background hover:bg-muted"
@@ -28,7 +28,7 @@ export function RoomList({ value, onChange }: Props) {
           key={room.id}
           type="button"
           onClick={() => onChange(room.id)}
-          className={`w-full text-left rounded-md px-3 py-2 text-sm border  cursor-pointer ${
+          className={`w-full text-left px-3 py-3 text-sm border-b cursor-pointer ${
             value === room.id
               ? "bg-primary text-primary-foreground"
               : "bg-background hover:bg-muted"

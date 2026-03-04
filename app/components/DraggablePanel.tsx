@@ -65,7 +65,7 @@ export function DraggablePanel({
     >
       {/* header arrastável */}
       <div
-        className="flex items-center justify-between px-3 py-2 bg-zinc-950 cursor-move rounded-t-lg text-white"
+        className="flex items-center justify-between px-3 py-2 bg-secondary-foreground cursor-move rounded-t-lg text-white"
         onMouseDown={(e) => {
           setDragging(true);
           setOffset({

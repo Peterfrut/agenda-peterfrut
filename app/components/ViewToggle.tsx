@@ -16,11 +16,11 @@ export function ViewToggle({ value, onChange }: Props) {
         type="single"
         value={value}
         onValueChange={(val) => val && onChange(val as ViewMode)}
-        className="justify-start"
+        className="justify-start space-x-0"
       >
-        <ToggleGroupItem value="day">Dia</ToggleGroupItem>
-        <ToggleGroupItem value="week">Semana</ToggleGroupItem>
-        <ToggleGroupItem value="month">Mês</ToggleGroupItem>
+        <ToggleGroupItem className="text-xs md:text-normal 2xl:text-base" value="day">Dia</ToggleGroupItem>
+        <ToggleGroupItem className="text-xs md:text-normal 2xl:text-base" value="week">Semana</ToggleGroupItem>
+        <ToggleGroupItem className="text-xs md:text-normal 2xl:text-base" value="month">Mês</ToggleGroupItem>
       </ToggleGroup>
     </div>
   );

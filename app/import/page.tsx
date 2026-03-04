@@ -70,7 +70,7 @@ export default function ImportPage() {
       <Dialog open={open} onOpenChange={setOpen}>
         <form>
           <DialogTrigger asChild>
-            <Button variant="default" type="button" className="rounded-md bg-transparent h-6 cursor-pointer focus:outline-none hover:border-muted hover:bg-secondary hover:text-secondary-foreground text-primary text-xs">
+            <Button variant="default" type="button" className="rounded-md bg-transparent h-6 cursor-pointer focus:outline-none hover:border-muted hover:bg-secondary hover:text-secondary-foreground text-secondary-foreground text-xs">
               <FolderUp className="w-5 h-5" />
               <span>Importar</span>
             </Button>

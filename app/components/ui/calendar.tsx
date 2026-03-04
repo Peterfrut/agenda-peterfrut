@@ -32,8 +32,7 @@ function Calendar({
       showOutsideDays={showOutsideDays}
       fixedWeeks={true}
       className={cn(
-        // ✅ mais compacto: padding menor e cell-size menor
-        "bg-background group/calendar p-2 [--cell-size:--spacing(6)] [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent",
+        "bg-background group/calendar [--cell-size:--spacing(8)] [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent",
         String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,
         String.raw`rtl:**:[.rdp-button\_previous>svg]:rotate-180`,
         className
@@ -54,11 +53,11 @@ function Calendar({
       classNames={{
         root: cn("w-fit", defaultClassNames.root),
 
-        // ✅ reduz gaps entre blocos/meses
         months: cn(
           "flex gap-2 flex-col md:flex-row relative",
           defaultClassNames.months
         ),
+
         month: cn("flex flex-col w-full gap-2", defaultClassNames.month),
 
         nav: cn(
@@ -71,6 +70,7 @@ function Calendar({
           "size-(--cell-size) aria-disabled:opacity-50 p-0 select-none",
           defaultClassNames.button_previous
         ),
+        
         button_next: cn(
           buttonVariants({ variant: buttonVariant }),
           "size-(--cell-size) aria-disabled:opacity-50 p-0 select-none",
@@ -104,15 +104,16 @@ function Calendar({
         table: "w-full border-collapse",
 
         weekdays: cn("flex", defaultClassNames.weekdays),
+
         weekday: cn(
           "text-muted-foreground flex-1 font-normal text-[0.8rem] select-none",
           defaultClassNames.weekday
         ),
 
-        // ✅ remove margem extra entre as semanas
         week: cn("flex w-full mt-0", defaultClassNames.week),
 
         week_number_header: cn("select-none w-(--cell-size)", defaultClassNames.week_number_header),
+
         week_number: cn("text-[0.8rem] select-none text-muted-foreground", defaultClassNames.week_number),
 
         day: cn(
@@ -214,14 +215,13 @@ function CalendarDayButton({
       data-range-end={modifiers.range_end}
       data-range-middle={modifiers.range_middle}
       className={cn(
-        // ✅ força o botão a respeitar o --cell-size (reduz espaço)
         "h-(--cell-size) w-(--cell-size) p-0 rounded-full",
         "data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground",
         "data-[range-middle=true]:bg-accent data-[range-middle=true]:text-accent-foreground",
         "data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground",
         "data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground",
         "group-data-[focused=true]/day:border-ring group-data-[focused=true]/day:ring-ring/50",
-        "group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:ring-[3px]",
+        "group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:ring-[4px]",
         "data-[range-end=true]:rounded-md data-[range-end=true]:rounded-r-md",
         "data-[range-middle=true]:rounded-none",
         "data-[range-start=true]:rounded-md data-[range-start=true]:rounded-l-md",

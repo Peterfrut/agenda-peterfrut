@@ -3,7 +3,6 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import { LogOut, Shield } from "lucide-react";
 import { ToggleTheme } from "./ToggleTheme";
@@ -78,29 +77,31 @@ export function AvatarProfile() {
     }
   }
   return (
-    <div className="flex items-center gap-2.5">
-      <Avatar className="w-12 h-12 cursor-pointer flex items-center justify-center">
-        <AvatarFallback className="bg-gray-800 text-white font-bold text-2xl flex items-center justify-center">
-          {me?.user?.name?.slice(0, 1).toLocaleUpperCase() ?? "?"}
-        </AvatarFallback>
-      </Avatar>
+    <div className="flex items-center lg:gap-2 w-full">
+      <div className="w-full flex gap-1 lg:gap-2 items-center">
+        <Avatar className="w-10 h-10 lg:w-12 lg:h-12 cursor-pointer flex items-center justify-center">
+          <AvatarFallback className="bg-secondary-foreground text-muted font-bold text-xs md:text-2xl flex items-center justify-center">
+            {me?.user?.name?.slice(0, 1).toLocaleUpperCase() ?? "?"}
+          </AvatarFallback>
+        </Avatar>
 
-      <div className="flex flex-col min-w-0">
-        <span className="font-semibold truncate">{me?.user?.name ?? ""}</span>
-        <span className="text-[13px] text-muted-foreground truncate">
-          {(me?.user?.email ?? "").toLowerCase()}
-        </span>
+        <div className="flex flex-col min-w-0">
+          <span className="text-[14px] lg:text-base font-semibold truncate">{me?.user?.name ?? ""}</span>
+          <span className="text-xs lg:text-[13px] text-muted-foreground truncate">
+            {(me?.user?.email ?? "").toLowerCase()}
+          </span>
+        </div>
       </div>
 
-      <div className="flex flex-col gap-1 items-center justify-center self-end">
+      <div className="flex flex-col items-center justify-center self-end">
         {me?.user?.role === "admin" ? (
           <Tooltip>
             <TooltipTrigger asChild>
-                <Shield 
-                  className="w-4 text-muted-foreground hover:text-primary"
-                  aria-label="Admin"
-                  onClick={() => setTimeout(() => router.push("/painel"), 500)}
-                 />
+              <Shield
+                className="w-4 text-muted-foreground hover:text-primary"
+                aria-label="Admin"
+                onClick={() => setTimeout(() => router.push("/painel"), 500)}
+              />
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <p>Admin</p>
