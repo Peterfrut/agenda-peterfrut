@@ -67,8 +67,9 @@ async function resolveDisplayName(email: string): Promise<string> {
  * IDs precisam bater com rooms.ts
  */
 const TEAMS_BY_ROOM_ID: Record<string, string> = {
-  sala_reuniao_sup: process.env.TEAMS_LINK_SALA_REUNIAO || "",
+  sala_reuniao_sup: process.env.TEAMS_LINK_SALA_REUNIAO_SUP || "",
   auditorio_sup: process.env.TEAMS_LINK_AUDITORIO || "",
+  sala_reuniao_inf: process.env.TEAMS_LINK_SALA_REUNIAO_INF || "",
 };
 
 /**
