@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (name.length <= 6 || name.length >= 30) {
+    if (name.length <= 6 || name.length >= 75) {
       return NextResponse.json(
         { ok: false, message: "Preencha seu nome completo!" },
         { status: 400 }
