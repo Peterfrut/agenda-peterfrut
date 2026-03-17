@@ -24,7 +24,7 @@ const PUBLIC_PREFIXES = [
   "/sala_reuniao_sup.png"
 ];
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // libera rotas públicas (igualdade ou prefixo)
