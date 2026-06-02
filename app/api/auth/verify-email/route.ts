@@ -1,10 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { normalizeToken } from "@/lib/formatters";
+import { rateLimit } from "@/lib/rate-limit";
+import { getClientIp, retryAfterResponse } from "@/lib/security";
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const ip = getClientIp(req);
+    const rl = rateLimit(`verify-email:${ip}`, 12, 60_000);
+    if (!rl.ok) return retryAfterResponse("Muitas tentativas.", rl.resetAt);
+
+    const body = await req.json().catch(() => ({}));
     const token = normalizeToken(body?.token);
 
     if (!token) {

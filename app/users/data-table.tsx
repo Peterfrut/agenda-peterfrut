@@ -12,16 +12,9 @@ import {
     getSortedRowModel,
     useReactTable,
 } from "@tanstack/react-table"
-import { ChevronDown } from "lucide-react"
 
 import { Button } from "@/app/components/ui/button"
 import { Input } from "@/app/components/ui/input"
-import {
-    DropdownMenu,
-    DropdownMenuCheckboxItem,
-    DropdownMenuContent,
-    DropdownMenuTrigger,
-} from "@/app/components/ui/dropdown-menu"
 import {
     Table,
     TableBody,
@@ -40,7 +33,9 @@ export function DataTable<TData, TValue>({
     columns,
     data,
 }: DataTableProps<TData, TValue>) {
-    const [sorting, setSorting] = React.useState<SortingState>([])
+    const [sorting, setSorting] = React.useState<SortingState>([
+        { id: "name", desc: false },
+    ])
     const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
     const [globalFilter, setGlobalFilter] = React.useState("")
 

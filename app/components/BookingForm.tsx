@@ -19,6 +19,7 @@ import { WORK_END_MIN, WORK_START_MIN } from "@/lib/rooms";
 import { MY_AGENDA_ID } from "./RoomList";
 
 import { Plus, Users } from "lucide-react";
+import type { Booking } from "@/lib/types/booking";
 
 type Props = {
   roomId: string;
@@ -122,7 +123,7 @@ export function BookingForm({ roomId, date, onDateChange, onCreated }: Props) {
       : `/api/bookings?roomId=${roomId}&date=${bookingDateISO}`
     : null;
 
-  const { data: dayBookings = [] } = useSWR<any[]>(bookingsKey, fetcher, {
+  const { data: dayBookings = [] } = useSWR<Booking[]>(bookingsKey, fetcher, {
     keepPreviousData: true,
   });
 
@@ -287,8 +288,8 @@ export function BookingForm({ roomId, date, onDateChange, onCreated }: Props) {
 
       revalidateCalendar();
       onCreated();
-    } catch (err: any) {
-      setFormError(err?.message ?? "Erro ao salvar no servidor.");
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : "Erro ao salvar no servidor.");
     } finally {
       setLoading(false);
     }
@@ -465,7 +466,9 @@ export function BookingForm({ roomId, date, onDateChange, onCreated }: Props) {
           <select
             className="w-full rounded-md border bg-background p-2 text-sm"
             value={repeatMode}
-            onChange={(e) => setRepeatMode(e.target.value as any)}
+            onChange={(e) =>
+              setRepeatMode(e.target.value as "none" | "daily" | "weekly" | "monthly" | "weeklyByDay")
+            }
             disabled={disabled}
           >
             <option value="none">Não repetir</option>

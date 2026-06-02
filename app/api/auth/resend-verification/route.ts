@@ -1,30 +1,36 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { randomBytes } from "crypto";
 import { sendEmailVerification } from "@/lib/verify-email-mail";
-import { normEmail } from "@/lib/formatters";
+import { isPeterfrutEmail, normEmail } from "@/lib/formatters";
+import { rateLimit } from "@/lib/rate-limit";
+import { getAppBaseUrl, getClientIp, retryAfterResponse } from "@/lib/security";
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const ip = getClientIp(req);
+    const body = await req.json().catch(() => ({}));
     const email = normEmail(body?.email);
 
     if (!email) {
       return NextResponse.json({ ok: false, message: "Informe o e-mail." }, { status: 400 });
     }
 
+    const rlIp = rateLimit(`resend-verification:ip:${ip}`, 5, 60_000);
+    const rlEmail = rateLimit(`resend-verification:email:${email}`, 3, 60_000);
+    if (!rlIp.ok) return retryAfterResponse("Muitas tentativas.", rlIp.resetAt);
+    if (!rlEmail.ok) return retryAfterResponse("Muitas tentativas para este e-mail.", rlEmail.resetAt);
+
+    if (!isPeterfrutEmail(email)) return NextResponse.json({ ok: true });
+
     const user = await prisma.user.findUnique({
       where: { email },
-      select: { id: true, email: true, name: true, emailVerifiedAt: true },
+      select: { id: true, email: true, name: true, active: true, emailVerifiedAt: true },
     });
 
-    // resposta genérica para não vazar existência
-    if (!user) return NextResponse.json({ ok: true });
-
-    // se já verificou, não precisa reenviar
+    if (!user?.active) return NextResponse.json({ ok: true });
     if (user.emailVerifiedAt) return NextResponse.json({ ok: true });
 
-    // invalida tokens antigos ainda não usados
     await prisma.emailVerificationToken.updateMany({
       where: { userId: user.id, usedAt: null },
       data: { usedAt: new Date() },
@@ -37,20 +43,15 @@ export async function POST(req: Request) {
       data: { token, userId: user.id, expiresAt },
     });
 
-    const verifyUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email/${token}`;
-
     await sendEmailVerification({
       to: user.email,
       name: user.name,
-      verifyUrl,
+      verifyUrl: `${getAppBaseUrl()}/verify-email/${token}`,
     });
 
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[RESEND-VERIFICATION] error:", e);
-    return NextResponse.json(
-      { ok: false, message: "Erro ao reenviar link." },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, message: "Erro ao reenviar link." }, { status: 500 });
   }
 }

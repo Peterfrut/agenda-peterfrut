@@ -1,105 +1,37 @@
-// app/api/import/import-ics/route.ts
+// app/api/import/route.ts
 import { NextResponse, NextRequest } from "next/server";
-import * as ical from "node-ical";
 import { DateTime } from "luxon";
-import { cookies } from "next/headers";
 
 import prisma from "@/lib/prisma";
-import { verifyJwt } from "@/lib/auth";
+import { requireAdmin } from "@/lib/api-auth";
+import { ROOMS, PERSONAL_ROOM_ID } from "@/lib/rooms";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type LoggedUser = { email: string; role?: string };
+const MAX_ICS_BYTES = 5 * 1024 * 1024;
+const MAX_EVENTS_PER_IMPORT = 5000;
 
-async function readToken(req: NextRequest) {
-  // cookies() na sua versão retorna Promise
-  const cookieStore = await cookies();
-
-  const tokenFromCookiesFn = cookieStore.get("token")?.value ?? "";
-  const tokenFromReq = req.cookies.get("token")?.value ?? "";
-
-  const token = tokenFromCookiesFn || tokenFromReq;
-
-  return {
-    token,
-    tokenFromCookiesFnLen: tokenFromCookiesFn.length,
-    tokenFromReqLen: tokenFromReq.length,
-  };
-}
-
-async function getLoggedUser(req: NextRequest): Promise<{ me: LoggedUser; diag: any }> {
-  const { token, tokenFromCookiesFnLen, tokenFromReqLen } = await readToken(req);
-
-  if (!token) {
-    return {
-      me: { email: "", role: undefined },
-      diag: {
-        reason: "no-token-cookie",
-        tokenFromCookiesFnLen,
-        tokenFromReqLen,
-        hasCookieHeader: Boolean(req.headers.get("cookie")),
-      },
+type IcsAttendee =
+  | string
+  | {
+      params?: Record<string, unknown>;
+      val?: unknown;
     };
-  }
 
-  try {
-    const payload: any = await verifyJwt(token);
+type IcsEvent = {
+  type?: unknown;
+  start?: unknown;
+  end?: unknown;
+  uid?: unknown;
+  recurrenceid?: unknown;
+  summary?: unknown;
+  attendee?: unknown;
+  description?: unknown;
+};
 
-    // pega sub (id) e email (se existir)
-    const sub = String(payload?.sub ?? "").trim();
-    const emailFromToken = String(payload?.email ?? "").trim();
-    const roleFromToken = String(payload?.role ?? "").trim();
-
-    // Se tiver email direto, ok
-    if (emailFromToken) {
-      return {
-        me: { email: emailFromToken, role: roleFromToken || undefined },
-        diag: { reason: "ok-email", tokenFromCookiesFnLen, tokenFromReqLen },
-      };
-    }
-
-    // Se não tiver email, mas tiver sub, busca no banco
-    if (sub) {
-      const user = await prisma.user.findUnique({
-        where: { id: sub },
-        select: { email: true, role: true },
-      });
-
-      if (user?.email) {
-        return {
-          me: { email: user.email, role: user.role ?? undefined },
-          diag: { reason: "ok-sub-db", tokenFromCookiesFnLen, tokenFromReqLen },
-        };
-      }
-
-      return {
-        me: { email: "", role: undefined },
-        diag: { reason: "sub-not-found", sub, tokenFromCookiesFnLen, tokenFromReqLen },
-      };
-    }
-
-    // Nem email nem sub
-    return {
-      me: { email: "", role: undefined },
-      diag: {
-        reason: "payload-missing-email-and-sub",
-        payloadKeys: payload ? Object.keys(payload) : null,
-        tokenFromCookiesFnLen,
-        tokenFromReqLen,
-      },
-    };
-  } catch (e: any) {
-    return {
-      me: { email: "", role: undefined },
-      diag: {
-        reason: "verifyJwt-failed",
-        error: e?.message ?? String(e),
-        tokenFromCookiesFnLen,
-        tokenFromReqLen,
-      },
-    };
-  }
+function toText(value: unknown) {
+  return String(value ?? "").trim();
 }
 
 function toSaoPaulo(dt: Date) {
@@ -107,66 +39,64 @@ function toSaoPaulo(dt: Date) {
   return { date: sp.toISODate()!, time: sp.toFormat("HH:mm") };
 }
 
-function getExternalIdForEvent(item: any): { uid: string; externalId: string } {
-  const uid = String(item?.uid ?? "").trim();
+function getExternalIdForEvent(item: IcsEvent): { uid: string; externalId: string } {
+  const uid = toText(item.uid);
 
   const rec =
-    item?.recurrenceid instanceof Date
+    item.recurrenceid instanceof Date
       ? item.recurrenceid.toISOString()
-      : typeof item?.recurrenceid === "string"
+      : typeof item.recurrenceid === "string"
         ? item.recurrenceid
         : null;
 
-  const startIso = item?.start instanceof Date ? item.start.toISOString() : "";
+  const startIso = item.start instanceof Date ? item.start.toISOString() : "";
   const instanceKey = rec && rec.length > 0 ? rec : startIso;
 
   const externalId = instanceKey ? `${uid}#${instanceKey}` : uid;
   return { uid, externalId };
 }
 
-function extractResponsible(item: any): {
+function normalizeAttendees(attendee: unknown): IcsAttendee[] {
+  if (Array.isArray(attendee)) return attendee as IcsAttendee[];
+  if (attendee) return [attendee as IcsAttendee];
+  return [];
+}
+
+function extractAttendeeEmail(attendee: IcsAttendee) {
+  const val = typeof attendee === "string" ? attendee : toText(attendee.val ?? attendee);
+  const email = val.toLowerCase().startsWith("mailto:") ? val.slice(7) : val;
+  return email.includes("@") ? email.trim().toLowerCase() : null;
+}
+
+function extractResponsible(item: IcsEvent): {
   userName: string;
   userEmail: string;
   participantsEmails: string | null;
 } {
   const participants: string[] = [];
 
-  // Primeiro: nome no final do SUMMARY: "Titulo (Nome Sobrenome)"
-  const summary = String(item?.summary ?? "").trim();
+  const summary = toText(item.summary);
   const summaryNameMatch = summary.match(/\(([^)]+)\)\s*$/);
   const nameFromSummary = summaryNameMatch?.[1]?.trim() || null;
-
-  //Attendees (para coletar emails e tentar pegar email do responsável)
-  const attendeesRaw = item?.attendee;
-  const attendeesArr = Array.isArray(attendeesRaw)
-    ? attendeesRaw
-    : attendeesRaw
-      ? [attendeesRaw]
-      : [];
 
   let bestEmail: string | null = null;
   let bestCn: string | null = null;
 
-  for (const a of attendeesArr) {
-    const params = a?.params ?? {};
-    const cutype = String(params?.CUTYPE ?? "").toUpperCase();
-    const cn = String(params?.CN ?? "").trim();
+  for (const attendee of normalizeAttendees(item.attendee)) {
+    const params = typeof attendee === "string" ? {} : attendee.params ?? {};
+    const cutype = toText(params.CUTYPE).toUpperCase();
+    const cn = toText(params.CN);
+    const email = extractAttendeeEmail(attendee);
 
-    const val = String(a?.val ?? a ?? "").trim();
-    const email = val.toLowerCase().startsWith("mailto:") ? val.slice(7) : val;
-    const emailClean = email.includes("@") ? email : null;
+    if (email) participants.push(email);
 
-    if (emailClean) participants.push(emailClean);
-
-    // pega o primeiro INDIVIDUAL como "candidato" a responsável
-    if (!bestEmail && cutype === "INDIVIDUAL" && emailClean) {
-      bestEmail = emailClean;
+    if (!bestEmail && cutype === "INDIVIDUAL" && email) {
+      bestEmail = email;
       bestCn = cn || null;
     }
   }
 
-  // Description fallback
-  const desc = String(item?.description ?? "").trim();
+  const desc = toText(item.description);
   let nameFromDesc: string | null = null;
   if (desc) {
     const m =
@@ -176,17 +106,9 @@ function extractResponsible(item: any): {
     if (m?.[1]) nameFromDesc = m[1].trim();
   }
 
-  // Escolha do NOME (prioridade: SUMMARY > CN > DESCRIPTION > "Reservado")
-  const userName =
-    nameFromSummary ||
-    bestCn ||
-    nameFromDesc ||
-    "Reservado";
-
-  // Email (se não houver, coloca placeholder)
+  const userName = nameFromSummary || bestCn || nameFromDesc || "Reservado";
   const userEmail = bestEmail || "unknown@import.local";
 
-  // remove duplicados e placeholder
   const uniqueParticipants = Array.from(
     new Set(participants.filter((p) => p && p !== "unknown@import.local"))
   );
@@ -200,38 +122,66 @@ function extractResponsible(item: any): {
 
 export async function POST(req: NextRequest) {
   try {
-    const { me, diag } = await getLoggedUser(req);
-
-    if (!me.email) {
-      return NextResponse.json({ ok: false, message: "Não autenticado", diag }, { status: 401 });
-    }
-    if (me.role !== "admin") {
-      return NextResponse.json({ ok: false, message: "Sem permissão", role: me.role ?? null }, { status: 403 });
+    const auth = await requireAdmin(req);
+    if (!auth.ok) {
+      return NextResponse.json({ ok: false, message: auth.message }, { status: auth.status });
     }
 
     const form = await req.formData();
-    const roomId = String(form.get("roomId") ?? "").trim();
+    const roomId = toText(form.get("roomId"));
     const file = form.get("file");
-    const strategy = String(form.get("strategy") ?? "replace");
-    const batchSize = Number(form.get("batchSize") ?? 500);
+    const strategy = toText(form.get("strategy")) || "replace";
+    const batchSizeRaw = Number(form.get("batchSize") ?? 500);
+    const batchSize = Number.isFinite(batchSizeRaw)
+      ? Math.min(1000, Math.max(1, Math.floor(batchSizeRaw)))
+      : 500;
 
-    if (!roomId) return NextResponse.json({ ok: false, message: "roomId obrigatório" }, { status: 400 });
+    const room = ROOMS.find((r) => r.id === roomId && r.id !== PERSONAL_ROOM_ID);
+    if (!room) return NextResponse.json({ ok: false, message: "Sala inválida" }, { status: 400 });
     if (!(file instanceof File)) return NextResponse.json({ ok: false, message: "Arquivo .ics obrigatório" }, { status: 400 });
+    if (!file.name.toLowerCase().endsWith(".ics")) {
+      return NextResponse.json({ ok: false, message: "O arquivo precisa ser .ics" }, { status: 400 });
+    }
+    if (file.size > MAX_ICS_BYTES) {
+      return NextResponse.json({ ok: false, message: "Arquivo .ics muito grande. Limite: 5 MB." }, { status: 413 });
+    }
+    if (!["replace", "append"].includes(strategy)) {
+      return NextResponse.json({ ok: false, message: "Estratégia inválida" }, { status: 400 });
+    }
 
     const text = await file.text();
-    const parsed = ical.sync.parseICS(text);
+    const ical = await import("node-ical");
+    const parsed = ical.sync.parseICS(text) as Record<string, IcsEvent>;
 
     const externalSource = /X-WR-CALNAME:(.+)\r?\n/i.exec(text)?.[1]?.trim() ?? null;
-    const roomName = `Sala ${roomId}`;
+    const roomName = room.name;
 
-    const toInsert: any[] = [];
+    const toInsert: Array<{
+      provider: "ics";
+      externalId: string;
+      externalSource: string | null;
+      roomId: string;
+      roomName: string;
+      title: string;
+      date: string;
+      startTime: string;
+      endTime: string;
+      status: "confirmed";
+      userName: string;
+      userEmail: string;
+      participantsEmails: string | null;
+    }> = [];
     let skipped = 0;
     let crossDaySkipped = 0;
     let noUidSkipped = 0;
+    let limitSkipped = 0;
 
-    for (const key of Object.keys(parsed)) {
-      const item: any = (parsed as any)[key];
+    for (const item of Object.values(parsed)) {
       if (!item || item.type !== "VEVENT") continue;
+      if (toInsert.length >= MAX_EVENTS_PER_IMPORT) {
+        limitSkipped++;
+        continue;
+      }
 
       if (!(item.start instanceof Date) || !(item.end instanceof Date)) {
         skipped++;
@@ -251,7 +201,7 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      const title = String(item.summary ?? "Evento").trim();
+      const title = toText(item.summary) || "Evento";
       const { userName, userEmail, participantsEmails } = extractResponsible(item);
 
       toInsert.push({
@@ -271,7 +221,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const deduped = Array.from(new Map(toInsert.map((x) => [`${x.provider}:${x.externalId}`, x])).values());
+    const deduped = Array.from(new Map(toInsert.map((x) => [`${x.provider}:${x.roomId}:${x.externalId}`, x])).values());
     const duplicatesRemoved = toInsert.length - deduped.length;
 
     if (strategy === "replace") {
@@ -279,10 +229,8 @@ export async function POST(req: NextRequest) {
     }
 
     let inserted = 0;
-    const size = Number.isFinite(batchSize) && batchSize > 0 ? batchSize : 500;
-
-    for (let i = 0; i < deduped.length; i += size) {
-      const batch = deduped.slice(i, i + size);
+    for (let i = 0; i < deduped.length; i += batchSize) {
+      const batch = deduped.slice(i, i + batchSize);
       const result = await prisma.booking.createMany({ data: batch, skipDuplicates: true });
       inserted += result.count;
     }
@@ -291,6 +239,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       message: "Importação concluída",
       strategy,
+      roomName,
       externalSource,
       totalParsed: toInsert.length,
       inserted,
@@ -298,9 +247,13 @@ export async function POST(req: NextRequest) {
       skipped,
       crossDaySkipped,
       noUidSkipped,
+      limitSkipped,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("ICS import failed:", e);
-    return NextResponse.json({ ok: false, message: e?.message ?? "Erro ao importar ICS" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, message: e instanceof Error ? e.message : "Erro ao importar ICS" },
+      { status: 500 }
+    );
   }
 }

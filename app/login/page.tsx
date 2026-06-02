@@ -64,9 +64,9 @@ async function handleSubmit(e: React.FormEvent) {
     toast.dismiss();
     toast.success("Login efetuado!");
     router.replace("/");
-  } catch (e: any) {
+  } catch (e: unknown) {
     toast.dismiss();
-    setError(e.message);
+    setError(e instanceof Error ? e.message : "Login inválido");
   } finally {
     setLoading(false);
   }
@@ -111,7 +111,7 @@ async function handleSubmit(e: React.FormEvent) {
               value={password}
               placeholder="Escolha uma senha..."
               onChange={(e) => setPassword(e.target.value)}
-              autoComplete="new-password"
+              autoComplete="current-password"
               className="pr-10"
             />
 

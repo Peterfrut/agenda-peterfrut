@@ -3,11 +3,7 @@ import bcrypt from "bcryptjs";
 import { signJwt } from "@/lib/auth";
 import { NextResponse, NextRequest } from "next/server";
 import { rateLimit } from "@/lib/rate-limit";
-
-function getClientIp(req: NextRequest) {
-  const xff = req.headers.get("x-forwarded-for");
-  return xff ? xff.split(",")[0].trim() : "ip:unknown";
-}
+import { getClientIp, retryAfterResponse } from "@/lib/security";
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
@@ -15,15 +11,11 @@ export async function POST(req: NextRequest) {
   // 1) Rate limit por IP (antes de qualquer coisa pesada)
   const rlIp = rateLimit(`login:ip:${ip}`, 8, 60_000);
   if (!rlIp.ok) {
-    const retryAfter = Math.ceil((rlIp.resetAt - Date.now()) / 1000);
-    return NextResponse.json(
-      { ok: false, message: `Muitas tentativas. Tente novamente em ${retryAfter}s.` },
-      { status: 429, headers: { "Retry-After": String(retryAfter) } }
-    );
+    return retryAfterResponse("Muitas tentativas.", rlIp.resetAt);
   }
 
   // 2) Leia o body UMA ÚNICA VEZ
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
 
   const email = String(body?.email ?? "").trim().toLowerCase();
   const password = String(body?.password ?? "");
@@ -32,11 +24,7 @@ export async function POST(req: NextRequest) {
   if (email) {
     const rlEmail = rateLimit(`login:email:${email}`, 5, 60_000);
     if (!rlEmail.ok) {
-      const retryAfter = Math.ceil((rlEmail.resetAt - Date.now()) / 1000);
-      return NextResponse.json(
-        { ok: false, message: `Muitas tentativas para este e-mail. Tente novamente em ${retryAfter}s.` },
-        { status: 429, headers: { "Retry-After": String(retryAfter) } }
-      );
+      return retryAfterResponse("Muitas tentativas para este e-mail.", rlEmail.resetAt);
     }
   }
 
@@ -57,6 +45,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { ok: false, message: "Credenciais inválidas" },
         { status: 401 }
+      );
+    }
+
+    if (!user.active) {
+      return NextResponse.json(
+        { ok: false, message: "Usuário inativo. Procure o TI." },
+        { status: 403 }
       );
     }
 

@@ -1,73 +1,116 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import prisma from "@/lib/prisma";
-import { getTokenFromRequest, verifyJwt } from "@/lib/auth";
+import { requireAdmin } from "@/lib/api-auth";
+import { isPeterfrutEmail, normEmail } from "@/lib/formatters";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function requireAdmin(req: NextRequest) {
-  const token = getTokenFromRequest(req);
-  if (!token) return { ok: false, status: 401, message: "Não autenticado" as const };
-
-  const payload: any = await verifyJwt(token);
-  if (!payload) return { ok: false, status: 401, message: "Token inválido" as const };
-
-  const userId = String(payload?.sub ?? "").trim();
-  const roleFromToken = String(payload?.role ?? "").trim();
-
-  let role = roleFromToken;
-  if (!role && userId) {
-    const u = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
-    role = u?.role ?? "";
-  }
-
-  if (role !== "admin") return { ok: false, status: 403, message: "Sem permissão" as const };
-  return { ok: true as const };
-}
-
-type Body = {
-  name?: string;
-  email?: string;
-  role?: string;
-  emailVerifiedAt?: Date | null;
-};
+const updateUserSchema = z.object({
+  name: z.string().trim().min(2).max(75).optional(),
+  email: z.string().trim().email().optional(),
+  role: z.enum(["user", "admin"]).optional(),
+  active: z.boolean().optional(),
+  verified: z.boolean().optional(),
+  emailVerifiedAt: z.string().datetime().nullable().optional(),
+});
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireAdmin(req);
   if (!auth.ok) return NextResponse.json({ ok: false, message: auth.message }, { status: auth.status });
 
   const { id } = await ctx.params;
-  const body = (await req.json().catch(() => ({}))) as Body;
-
-  const data: any = {};
-
-  if (typeof body.name === "string") data.name = body.name.trim();
-  if (typeof body.email === "string") data.email = body.email.trim().toLowerCase();
-  if (typeof body.role === "string") data.role = body.role.trim();
-  if (typeof body.emailVerifiedAt === "string") data.emailVerifiedAt = new Date(body.emailVerifiedAt);
-  
-
-  // Validações mínimas
-  if (data.email && !data.email.includes("@")) {
-    return NextResponse.json({ ok: false, message: "E-mail inválido" }, { status: 400 });
+  const parsed = updateUserSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return NextResponse.json(
+      { ok: false, message: parsed.error.issues[0]?.message || "Dados invalidos" },
+      { status: 400 }
+    );
   }
-  if (data.role && !["user", "admin"].includes(data.role)) {
-    return NextResponse.json({ ok: false, message: "Permissão inválida" }, { status: 400 });
+
+  const body = parsed.data;
+  const data: {
+    name?: string;
+    email?: string;
+    role?: "user" | "admin";
+    active?: boolean;
+    verified?: boolean;
+    emailVerifiedAt?: Date | null;
+  } = {};
+
+  if (body.name) data.name = body.name;
+  if (body.email) {
+    const email = normEmail(body.email);
+    if (!isPeterfrutEmail(email)) {
+      return NextResponse.json(
+        { ok: false, message: "Use um e-mail corporativo @peterfrut.com.br." },
+        { status: 400 }
+      );
+    }
+    data.email = email;
+  }
+  if (body.role) data.role = body.role;
+  if (typeof body.active === "boolean") data.active = body.active;
+  if (typeof body.verified === "boolean") {
+    data.verified = body.verified;
+    data.emailVerifiedAt = body.verified ? new Date() : null;
+  } else if (body.emailVerifiedAt !== undefined) {
+    data.emailVerifiedAt = body.emailVerifiedAt ? new Date(body.emailVerifiedAt) : null;
+    data.verified = !!body.emailVerifiedAt;
+  }
+
+  const existing = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, role: true, active: true },
+  });
+  if (!existing) {
+    return NextResponse.json({ ok: false, message: "Usuario nao encontrado" }, { status: 404 });
+  }
+
+  if (id === auth.user.id && data.active === false) {
+    return NextResponse.json(
+      { ok: false, message: "Voce nao pode inativar o proprio usuario." },
+      { status: 409 }
+    );
+  }
+
+  const removesActiveAdmin =
+    existing.role === "admin" &&
+    existing.active &&
+    (data.role === "user" || data.active === false);
+
+  if (removesActiveAdmin) {
+    const admins = await prisma.user.count({ where: { role: "admin", active: true } });
+    if (admins <= 1) {
+      return NextResponse.json(
+        { ok: false, message: "Nao e possivel remover ou inativar o ultimo admin ativo." },
+        { status: 409 }
+      );
+    }
   }
 
   try {
     const updated = await prisma.user.update({
       where: { id },
       data,
-      select: { id: true, name: true, email: true, verified: true, role: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        active: true,
+        verified: true,
+        role: true,
+        emailVerifiedAt: true,
+      },
     });
 
     return NextResponse.json({ ok: true, user: updated });
-  } catch (e: any) {
-    if (e?.code === "P2002") {
-      return NextResponse.json({ ok: false, message: "Este e-mail já está em uso." }, { status: 409 });
+  } catch (e: unknown) {
+    if (typeof e === "object" && e && "code" in e && e.code === "P2002") {
+      return NextResponse.json({ ok: false, message: "Este e-mail ja esta em uso." }, { status: 409 });
     }
-    return NextResponse.json({ ok: false, message: "Erro ao atualizar usuário" }, { status: 500 });
+    return NextResponse.json({ ok: false, message: "Erro ao atualizar usuario" }, { status: 500 });
   }
 }
 
@@ -77,23 +120,32 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
 
   const { id } = await ctx.params;
 
-  const data: any = {};
-
-  // Validações mínimas
-  if (data.email && !data.email.includes("@")) {
-    return NextResponse.json({ ok: false, message: "E-mail inválido" }, { status: 400 });
+  if (id === auth.user.id) {
+    return NextResponse.json(
+      { ok: false, message: "Voce nao pode excluir o proprio usuario." },
+      { status: 409 }
+    );
   }
-  if (data.role && !["user", "admin"].includes(data.role)) {
-    return NextResponse.json({ ok: false, message: "Permissão inválida" }, { status: 400 });
+
+  const existing = await prisma.user.findUnique({ where: { id }, select: { role: true, active: true } });
+  if (!existing) {
+    return NextResponse.json({ ok: false, message: "Usuario nao encontrado" }, { status: 404 });
+  }
+
+  if (existing.role === "admin" && existing.active) {
+    const admins = await prisma.user.count({ where: { role: "admin", active: true } });
+    if (admins <= 1) {
+      return NextResponse.json(
+        { ok: false, message: "Nao e possivel excluir o ultimo admin ativo." },
+        { status: 409 }
+      );
+    }
   }
 
   try {
-    const deleted = await prisma.user.delete({
-      where: { id },
-    });
-
+    const deleted = await prisma.user.delete({ where: { id } });
     return NextResponse.json({ ok: true, user: deleted });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, message: "Erro ao deletar usuário" }, { status: 500 });
+  } catch {
+    return NextResponse.json({ ok: false, message: "Erro ao deletar usuario" }, { status: 500 });
   }
 }

@@ -14,11 +14,11 @@ export async function GET(req: NextRequest) {
     }
 
     const prt = await prisma.passwordResetToken.findFirst({
-      where: { token },
-      select: { id: true, expiresAt: true },
+      where: { token, usedAt: null },
+      select: { id: true, expiresAt: true, user: { select: { active: true } } },
     });
 
-    if (!prt) {
+    if (!prt?.user.active) {
       return NextResponse.json({ ok: false, reason: "invalid" }, { status: 200 });
     }
 

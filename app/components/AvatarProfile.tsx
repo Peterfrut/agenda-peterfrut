@@ -57,8 +57,8 @@ export function AvatarProfile() {
       });
 
       setTimeout(() => router.replace("/login"), 2000);
-    } catch (e: any) {
-      toast.error(e?.message ?? "Erro ao sair");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao sair");
     } finally {
       setLoggingOut(false);
     }

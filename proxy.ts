@@ -27,6 +27,21 @@ const PUBLIC_PREFIXES = [
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    const origin = req.headers.get("origin");
+    if (origin) {
+      let originUrl: URL | null = null;
+      try {
+        originUrl = new URL(origin);
+      } catch {
+        return NextResponse.json({ ok: false, message: "Origem inválida" }, { status: 403 });
+      }
+      if (originUrl.host !== req.nextUrl.host) {
+        return NextResponse.json({ ok: false, message: "Origem inválida" }, { status: 403 });
+      }
+    }
+  }
+
   // libera rotas públicas (igualdade ou prefixo)
   if (
     PUBLIC_PREFIXES.some(

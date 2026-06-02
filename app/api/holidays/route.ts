@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { requireUser } from "@/lib/api-auth";
 
 type BrasilApiHoliday = {
   date: string;
@@ -9,6 +10,9 @@ type BrasilApiHoliday = {
 
 export async function GET(req: NextRequest) {
   try {
+    const auth = await requireUser(req);
+    if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+
     const { searchParams } = new URL(req.url);
     const roomId = searchParams.get("roomId");
     const start = searchParams.get("start");
@@ -16,6 +20,17 @@ export async function GET(req: NextRequest) {
 
     if (!start || !end) {
       return NextResponse.json({ error: "start e end são obrigatórios" }, { status: 400 });
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || start > end) {
+      return NextResponse.json({ error: "Intervalo de datas invÃ¡lido" }, { status: 400 });
+    }
+
+    const startDate = new Date(`${start}T00:00:00Z`);
+    const endDate = new Date(`${end}T00:00:00Z`);
+    const days = Math.ceil((endDate.getTime() - startDate.getTime()) / 86_400_000) + 1;
+    if (!Number.isFinite(days) || days > 370) {
+      return NextResponse.json({ error: "Intervalo mÃ¡ximo de consulta: 370 dias" }, { status: 400 });
     }
 
     const year = Number(start.slice(0, 4));

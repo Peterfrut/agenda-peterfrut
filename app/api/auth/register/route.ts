@@ -4,12 +4,8 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { rateLimit } from "@/lib/rate-limit";
 import { sendEmailVerification } from "@/lib/verify-email-mail";
-import { isPeterfrutEmail, normEmail, validatePassword } from "@/lib/formatters";
-
-function getClientIp(req: NextRequest) {
-  const xff = req.headers.get("x-forwarded-for");
-  return xff ? xff.split(",")[0].trim() : "ip:unknown";
-}
+import { PASSWORD_RULES_MESSAGE, isPeterfrutEmail, normEmail, validatePassword } from "@/lib/formatters";
+import { getAppBaseUrl, getClientIp, retryAfterResponse } from "@/lib/security";
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
@@ -17,16 +13,20 @@ export async function POST(req: NextRequest) {
   // Ex.: 5 cadastros/min por IP
   const rl = rateLimit(`register:ip:${ip}`, 5, 60_000);
   if (!rl.ok) {
-    const retryAfter = Math.ceil((rl.resetAt - Date.now()) / 1000);
-    return NextResponse.json(
-      { ok: false, message: `Muitas tentativas. Tente novamente em ${retryAfter}s.` },
-      { status: 429, headers: { "Retry-After": String(retryAfter) } }
-    );
+    return retryAfterResponse("Muitas tentativas.", rl.resetAt);
   }
 
   try {
-    const { name, email, password } = await req.json();
+    const { name, email, password } = await req.json().catch(() => ({}));
+    const nameNorm = String(name ?? "").trim();
     const emailNorm = normEmail(email);
+
+    if (!nameNorm || !emailNorm || !password) {
+      return NextResponse.json(
+        { ok: false, message: "Nome, e-mail e senha são obrigatórios" },
+        { status: 400 }
+      );
+    }
 
     if (!isPeterfrutEmail(emailNorm)) {
       return NextResponse.json(
@@ -35,16 +35,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (name.length <= 6 || name.length >= 75) {
+    if (nameNorm.length <= 6 || nameNorm.length >= 75) {
       return NextResponse.json(
         { ok: false, message: "Preencha seu nome completo!" },
-        { status: 400 }
-      );
-    }
-
-    if (!name || !emailNorm || !password) {
-      return NextResponse.json(
-        { ok: false, message: "Nome, e-mail e senha são obrigatórios" },
         { status: 400 }
       );
     }
@@ -53,7 +46,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           ok: false,
-          message: "Verifique a senha inserida! A senha deve ter no mínimo 10 caracteres, conter 1 letra maiúscula, 1 número e 1 símbolo."
+          message: `Verifique a senha inserida! ${PASSWORD_RULES_MESSAGE}`
         },
         { status: 400 }
       );
@@ -72,7 +65,7 @@ export async function POST(req: NextRequest) {
     const hash = await bcrypt.hash(password, 10);
 
     const user = await prisma.user.create({
-      data: { name, email: emailNorm, password: hash },
+      data: { name: nameNorm, email: emailNorm, password: hash },
       select: { id: true, email: true, name: true },
     });
 
@@ -84,7 +77,7 @@ export async function POST(req: NextRequest) {
       data: { token, userId: user.id, expiresAt },
     });
 
-    const verifyUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email/${token}`;
+    const verifyUrl = `${getAppBaseUrl()}/verify-email/${token}`;
 
     await sendEmailVerification({
       to: user.email,

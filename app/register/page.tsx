@@ -9,6 +9,8 @@ import logo from "@/public/logo_peterfrut.png";
 import { Eye, EyeOff } from "lucide-react";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/app/components/ui/tooltip";
+import { PASSWORD_RULES_MESSAGE, validatePassword } from "@/lib/formatters";
+import { PasswordRules } from "@/app/components/PasswordRules";
 
 function RegisterPageInner() {
   const router = useRouter();
@@ -41,7 +43,7 @@ function RegisterPageInner() {
   useEffect(() => {
     const emailParam = (searchParams.get("email") || "").toLowerCase().trim();
     if (emailParam && !email) setEmail(emailParam);
-  }, [searchParams]);
+  }, [email, searchParams]);
 
   // Contador + redirect após sucesso
   useEffect(() => {
@@ -81,6 +83,14 @@ function RegisterPageInner() {
     if (loading || success) return;
 
     setError(null);
+    if (!validatePassword(password)) {
+      setError(PASSWORD_RULES_MESSAGE);
+      return;
+    }
+    if (password !== confirm) {
+      setError("As senhas não conferem.");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -96,8 +106,8 @@ function RegisterPageInner() {
       }
 
       setSuccess(true);
-    } catch (e: any) {
-      setError(e?.message ?? "Erro ao cadastrar");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erro ao cadastrar");
     } finally {
       setLoading(false);
     }
@@ -226,7 +236,13 @@ function RegisterPageInner() {
               </div>
             </div>
 
-            <Button type="submit" className="w-full cursor-pointer" disabled={loading}>
+            <PasswordRules password={password} confirm={confirm} />
+
+            <Button
+              type="submit"
+              className="w-full cursor-pointer"
+              disabled={loading || !validatePassword(password) || password !== confirm}
+            >
               {loading ? "Salvando..." : "Cadastrar"}
             </Button>
 

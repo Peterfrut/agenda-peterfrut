@@ -1,6 +1,7 @@
 import { resend, getFromEmail } from "./mailer";
 import fs from "fs";
 import path from "path";
+import { escapeHtml } from "@/lib/security";
 
 
 export async function sendPasswordResetEmail(opts: {
@@ -9,6 +10,8 @@ export async function sendPasswordResetEmail(opts: {
   resetUrl: string;
 }) {
   const displayName = opts.name?.trim() ? opts.name : opts.to.split("@")[0];
+  const safeDisplayName = escapeHtml(displayName);
+  const safeResetUrl = escapeHtml(opts.resetUrl);
   const logoPath = path.join(process.cwd(), "public", "logo_peterfrut.png");
   const logoBuffer = fs.readFileSync(logoPath);
 
@@ -30,7 +33,7 @@ export async function sendPasswordResetEmail(opts: {
       <h2 style="margin: 0 0 12px 0; color:#111827; text-align:center;">Redefinição de Senha</h2>
 
       <p style="font-size: 14px; color: #374151;">
-        Olá <strong>${displayName}</strong>, recebemos uma solicitação para redefinir sua senha, este link é <strong>válido por 15 minutos</strong>.
+        Olá <strong>${safeDisplayName}</strong>, recebemos uma solicitação para redefinir sua senha, este link é <strong>válido por 15 minutos</strong>.
       </p>
 
       <p style="font-size: 14px; color: #374151;">
@@ -38,7 +41,7 @@ export async function sendPasswordResetEmail(opts: {
       </p>
 
       <div style="text-align:center; margin: 18px 0;">
-        <a href="${opts.resetUrl}"
+        <a href="${safeResetUrl}"
           style="
             background: #16a34a;
             color: white;
@@ -56,7 +59,7 @@ export async function sendPasswordResetEmail(opts: {
         Se o botão não funcionar, copie e cole este link no navegador:
       </p>
       <p style="font-size: 12px; color: #111827; word-break: break-all;">
-        ${opts.resetUrl}
+        ${safeResetUrl}
       </p>
 
       <p style="font-size: 11px; color: #9ca3af; text-align:center; margin-top: 24px;">

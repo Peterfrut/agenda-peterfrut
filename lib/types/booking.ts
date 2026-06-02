@@ -15,4 +15,9 @@ export type Booking = {
   provider?: "local" | "ics" | "google" | string;
   externalId?: string | null;
   externalSource?: string | null;
+
+  isOwner?: boolean;
+  isParticipant?: boolean;
+  canManage?: boolean;
+  canViewParticipants?: boolean;
 };

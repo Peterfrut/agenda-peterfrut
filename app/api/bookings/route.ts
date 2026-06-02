@@ -5,8 +5,10 @@ import { z } from "zod";
 import { intervalsOverlap, isWithinWorkingHours } from "@/lib/time";
 import { ROOMS } from "@/lib/rooms";
 import prisma from "@/lib/prisma";
-import { getTokenFromRequest, verifyJwt } from "@/lib/auth";
+import type { Booking as PrismaBooking, Prisma } from "@prisma/client";
+import { requireUser, type SessionUser } from "@/lib/api-auth";
 import { rateLimit } from "@/lib/rate-limit";
+import { retryAfterResponse } from "@/lib/security";
 
 import { addDays, addMonths, addWeeks, format, getDay, parseISO } from "date-fns";
 import { isStep30Minutes, isValidEmail, normEmail, splitEmails } from "@/lib/formatters";
@@ -130,13 +132,13 @@ async function isNationalHoliday(dateISO: string): Promise<boolean> {
 
 const bookingSchema = z
   .object({
-    roomId: z.string(),
-    userName: z.string().min(2),
-    participantsEmails: z.string().optional().nullable(),
+    roomId: z.string().min(1).max(80),
+    userName: z.string().min(2).max(75),
+    participantsEmails: z.string().max(2000).optional().nullable(),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     startTime: z.string().regex(/^\d{2}:\d{2}$/),
     endTime: z.string().regex(/^\d{2}:\d{2}$/),
-    title: z.string().max(120),
+    title: z.string().trim().min(1).max(120),
 
     recurrence: z
       .object({
@@ -157,6 +159,13 @@ const bookingSchema = z
 
     if (val.participantsEmails) {
       const emails = splitEmails(val.participantsEmails);
+      if (emails.length > 50) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Limite de 50 participantes por reserva.",
+          path: ["participantsEmails"],
+        });
+      }
       const invalid = emails.filter((e) => !isValidEmail(e));
       if (invalid.length) {
         ctx.addIssue({
@@ -176,6 +185,14 @@ const bookingSchema = z
           path: ["recurrence", "weekDays"],
         });
       }
+    }
+
+    if (val.recurrence?.until && val.recurrence.until < val.date) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A data final da repetição não pode ser anterior à data inicial.",
+        path: ["recurrence", "until"],
+      });
     }
   });
 
@@ -198,28 +215,66 @@ const updateSchema = z
 
 const deleteSchema = z.object({ id: z.string() });
 
-async function getLoggedUserEmail(req: NextRequest): Promise<string | null> {
-  const token = getTokenFromRequest(req);
-  if (!token) return null;
-  const payload = await verifyJwt(token);
-  const email = (payload as any)?.email;
-  return typeof email === "string" ? email : null;
-}
-
-async function getLoggedUser(req: NextRequest): Promise<{ email: string | null; role: string | null }> {
-  const token = getTokenFromRequest(req);
-  if (!token) return { email: null, role: null };
-  const payload = await verifyJwt(token);
-  const email = typeof (payload as any)?.email === "string" ? (payload as any).email : null;
-  const role = typeof (payload as any)?.role === "string" ? (payload as any).role : null;
-  return { email, role };
-}
-
 const MY_AGENDA_ID = "__my__";
+
+class BookingApiError extends Error {
+  constructor(
+    message: string,
+    public status: number
+  ) {
+    super(message);
+  }
+}
+
+function participantList(value: string | null) {
+  return splitEmails(value ?? "");
+}
+
+function isParticipant(booking: Pick<PrismaBooking, "participantsEmails">, email: string) {
+  return participantList(booking.participantsEmails).includes(normEmail(email));
+}
+
+function toBookingDto(booking: PrismaBooking, user: SessionUser) {
+  const isOwner = normEmail(booking.userEmail) === user.email;
+  const participant = isParticipant(booking, user.email);
+  const canManage = user.role === "admin" || isOwner;
+  const canViewParticipants = canManage || participant;
+
+  return {
+    id: booking.id,
+    roomId: booking.roomId,
+    roomName: booking.roomName,
+    title: booking.title,
+    date: booking.date,
+    startTime: booking.startTime,
+    endTime: booking.endTime,
+    userName: booking.userName,
+    userEmail: canManage ? booking.userEmail : "",
+    participantsEmails: canViewParticipants ? booking.participantsEmails : null,
+    status: booking.status,
+    provider: booking.provider,
+    externalSource: user.role === "admin" ? booking.externalSource : null,
+    externalId: user.role === "admin" ? booking.externalId : null,
+    createdAt: booking.createdAt,
+    updatedAt: booking.updatedAt,
+    isOwner,
+    isParticipant: participant,
+    canManage,
+    canViewParticipants,
+  };
+}
+
+async function lockBookingDay(tx: Prisma.TransactionClient, roomId: string, date: string, email?: string) {
+  const scope = email ? `${roomId}:${date}:${email}` : `${roomId}:${date}`;
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${scope}))`;
+}
 
 // -------------------- GET -------------------- //
 
 export async function GET(req: NextRequest) {
+  const auth = await requireUser(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+
   const { searchParams } = new URL(req.url);
 
   const roomId = searchParams.get("roomId");
@@ -228,11 +283,9 @@ export async function GET(req: NextRequest) {
   const scope = searchParams.get("scope");
 
   if (scope === "my") {
-    const email = await getLoggedUserEmail(req);
-    const emailNorm = normEmail(email);
-    if (!emailNorm) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    const emailNorm = auth.user.email;
 
-    const where: any = {
+    const where: Prisma.BookingWhereInput = {
       OR: [{ userEmail: emailNorm }, { participantsEmails: { contains: emailNorm } }],
     };
     if (date && !all) where.date = date;
@@ -242,10 +295,14 @@ export async function GET(req: NextRequest) {
       orderBy: [{ date: "asc" }, { startTime: "asc" }],
     });
 
-    return NextResponse.json(bookings);
+    const filtered = bookings.filter(
+      (booking) => normEmail(booking.userEmail) === emailNorm || isParticipant(booking, emailNorm)
+    );
+
+    return NextResponse.json(filtered.map((booking) => toBookingDto(booking, auth.user)));
   }
 
-  const where: any = {};
+  const where: Prisma.BookingWhereInput = {};
   if (roomId) where.roomId = roomId;
   if (date && !all) where.date = date;
 
@@ -254,25 +311,20 @@ export async function GET(req: NextRequest) {
     orderBy: [{ date: "asc" }, { startTime: "asc" }],
   });
 
-  return NextResponse.json(bookings);
+  return NextResponse.json(bookings.map((booking) => toBookingDto(booking, auth.user)));
 }
 
 // -------------------- POST -------------------- //
 
 export async function POST(req: NextRequest) {
   try {
-    const me = await getLoggedUser(req);
-    const loggedEmailNorm = normEmail(me.email);
-    const isAdmin = me.role === "admin";
-    if (!loggedEmailNorm) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    const auth = await requireUser(req);
+    if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+    const loggedEmailNorm = auth.user.email;
 
     const rl = rateLimit(`booking:create:${loggedEmailNorm}`, 10, 60_000);
     if (!rl.ok) {
-      const retryAfter = Math.ceil((rl.resetAt - Date.now()) / 1000);
-      return NextResponse.json(
-        { error: `Muitas reservas em pouco tempo. Tente novamente em ${retryAfter}s.` },
-        { status: 429, headers: { "Retry-After": String(retryAfter) } }
-      );
+      return retryAfterResponse("Muitas reservas em pouco tempo.", rl.resetAt);
     }
 
     const json = await req.json();
@@ -354,41 +406,41 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // conflito em todas as ocorrências
-    for (const d of dates) {
-      const sameDay = await prisma.booking.findMany({
-        where: isPersonalAgenda
-          ? { roomId: data.roomId, date: d, userEmail: loggedEmailNorm }
-          : { roomId: data.roomId, date: d },
-      });
-
-      const conflict = sameDay.some((b) =>
-        intervalsOverlap(data.startTime, data.endTime, b.startTime, b.endTime)
-      );
-
-      if (conflict) {
-        return NextResponse.json(
-          { error: `Já existe uma reserva que se sobrepõe a esse horário em ${d}.` },
-          { status: 409 }
-        );
-      }
+    if (dates.length === 0) {
+      return NextResponse.json({ error: "Nenhuma ocorrência válida para criar." }, { status: 400 });
     }
 
-    // cria tudo em transação
+    // cria tudo em transação com trava por sala/dia para evitar corrida
     const created = await prisma.$transaction(async (tx) => {
-      const rows = [];
+      const rows: PrismaBooking[] = [];
       for (const d of dates) {
+        await lockBookingDay(tx, data.roomId, d, isPersonalAgenda ? loggedEmailNorm : undefined);
+
+        const sameDay = await tx.booking.findMany({
+          where: isPersonalAgenda
+            ? { roomId: data.roomId, date: d, userEmail: loggedEmailNorm }
+            : { roomId: data.roomId, date: d },
+        });
+
+        const conflict = sameDay.some((b) =>
+          intervalsOverlap(data.startTime, data.endTime, b.startTime, b.endTime)
+        );
+
+        if (conflict) {
+          throw new BookingApiError(`Já existe uma reserva que se sobrepõe a esse horário em ${d}.`, 409);
+        }
+
         const booking = await tx.booking.create({
           data: {
             roomId: data.roomId,
             roomName,
-            userName: data.userName,
+            userName: auth.user.name,
             userEmail: loggedEmailNorm,
             participantsEmails: participantsNorm,
             date: d,
             startTime: data.startTime,
             endTime: data.endTime,
-            title: data.title ?? null,
+            title: data.title,
           },
         });
         rows.push(booking);
@@ -398,14 +450,17 @@ export async function POST(req: NextRequest) {
 
     await sendBookingEmail("created", created[0] as BookingLike);
 
-    return NextResponse.json(created[0], {
+    return NextResponse.json(toBookingDto(created[0], auth.user), {
       status: 201,
       headers: { "X-Created-Count": String(created.length) },
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error(err);
-    if (err?.name === "ZodError") {
-      const msg = err?.issues?.[0]?.message || "Dados inválidos.";
+    if (err instanceof BookingApiError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    if (err instanceof z.ZodError) {
+      const msg = err.issues[0]?.message || "Dados inválidos.";
       return NextResponse.json({ error: msg }, { status: 400 });
     }
     return NextResponse.json({ error: "Erro ao criar reserva." }, { status: 500 });
@@ -416,18 +471,14 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const me = await getLoggedUser(req);
-    const loggedEmailNorm = normEmail(me.email);
-    const isAdmin = me.role === "admin";
-    if (!loggedEmailNorm) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    const auth = await requireUser(req);
+    if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+    const loggedEmailNorm = auth.user.email;
+    const isAdmin = auth.user.role === "admin";
 
     const rl = rateLimit(`booking:update:${loggedEmailNorm}`, 10, 60_000);
     if (!rl.ok) {
-      const retryAfter = Math.ceil((rl.resetAt - Date.now()) / 1000);
-      return NextResponse.json(
-        { error: `Muitas alterações em pouco tempo. Tente novamente em ${retryAfter}s.` },
-        { status: 429, headers: { "Retry-After": String(retryAfter) } }
-      );
+      return retryAfterResponse("Muitas alterações em pouco tempo.", rl.resetAt);
     }
 
     const json = await req.json();
@@ -470,31 +521,39 @@ export async function PATCH(req: NextRequest) {
       console.warn("Falha ao consultar feriados nacionais no PATCH. Prosseguindo sem bloqueio.", e);
     }
 
-    const sameDay = await prisma.booking.findMany({
-      where: { roomId: booking.roomId, date: data.date, NOT: { id: booking.id } },
-    });
+    const isPersonalAgenda = booking.roomId === MY_AGENDA_ID;
 
-    const conflict = sameDay.some((b) =>
-      intervalsOverlap(data.startTime, data.endTime, b.startTime, b.endTime)
-    );
-    if (conflict) {
-      return NextResponse.json(
-        { error: "Já existe uma reserva que se sobrepõe a esse horário." },
-        { status: 409 }
+    const updated = await prisma.$transaction(async (tx) => {
+      await lockBookingDay(tx, booking.roomId, data.date, isPersonalAgenda ? normEmail(booking.userEmail) : undefined);
+
+      const sameDay = await tx.booking.findMany({
+        where: isPersonalAgenda
+          ? { roomId: booking.roomId, date: data.date, userEmail: booking.userEmail, NOT: { id: booking.id } }
+          : { roomId: booking.roomId, date: data.date, NOT: { id: booking.id } },
+      });
+
+      const conflict = sameDay.some((b) =>
+        intervalsOverlap(data.startTime, data.endTime, b.startTime, b.endTime)
       );
-    }
+      if (conflict) {
+        throw new BookingApiError("Já existe uma reserva que se sobrepõe a esse horário.", 409);
+      }
 
-    const updated = await prisma.booking.update({
-      where: { id: booking.id },
-      data: { date: data.date, startTime: data.startTime, endTime: data.endTime },
+      return tx.booking.update({
+        where: { id: booking.id },
+        data: { date: data.date, startTime: data.startTime, endTime: data.endTime },
+      });
     });
 
     await sendBookingEmail("updated", updated as BookingLike);
-    return NextResponse.json(updated);
-  } catch (err: any) {
+    return NextResponse.json(toBookingDto(updated, auth.user));
+  } catch (err: unknown) {
     console.error(err);
-    if (err?.name === "ZodError") {
-      const msg = err?.issues?.[0]?.message || "Dados inválidos.";
+    if (err instanceof BookingApiError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    if (err instanceof z.ZodError) {
+      const msg = err.issues[0]?.message || "Dados inválidos.";
       return NextResponse.json({ error: msg }, { status: 400 });
     }
     return NextResponse.json({ error: "Erro ao remarcar reserva." }, { status: 500 });
@@ -505,18 +564,14 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const me = await getLoggedUser(req);
-    const loggedEmailNorm = normEmail(me.email);
-    const isAdmin = me.role === "admin";
-    if (!loggedEmailNorm) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    const auth = await requireUser(req);
+    if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+    const loggedEmailNorm = auth.user.email;
+    const isAdmin = auth.user.role === "admin";
 
     const rl = rateLimit(`booking:delete:${loggedEmailNorm}`, 10, 60_000);
     if (!rl.ok) {
-      const retryAfter = Math.ceil((rl.resetAt - Date.now()) / 1000);
-      return NextResponse.json(
-        { error: `Muitas exclusões em pouco tempo. Tente novamente em ${retryAfter}s.` },
-        { status: 429, headers: { "Retry-After": String(retryAfter) } }
-      );
+      return retryAfterResponse("Muitas exclusões em pouco tempo.", rl.resetAt);
     }
 
     const json = await req.json();
@@ -536,10 +591,10 @@ export async function DELETE(req: NextRequest) {
     await sendBookingEmail("canceled", booking as BookingLike);
 
     return NextResponse.json({ ok: true });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error(err);
-    if (err?.name === "ZodError") {
-      const msg = err?.issues?.[0]?.message || "Dados inválidos.";
+    if (err instanceof z.ZodError) {
+      const msg = err.issues[0]?.message || "Dados inválidos.";
       return NextResponse.json({ error: msg }, { status: 400 });
     }
     return NextResponse.json({ error: "Erro ao excluir reserva." }, { status: 500 });

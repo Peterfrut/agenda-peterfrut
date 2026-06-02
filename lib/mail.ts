@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { resend, getFromEmail } from "@/lib/mailer";
 import fs from "fs";
 import path from "path";
+import { escapeHtml, getAppBaseUrl } from "@/lib/security";
 
 export type BookingLike = {
   id: string;
@@ -47,7 +48,7 @@ async function hasUserAccount(email: string): Promise<boolean> {
  - Em dev, pode ser localhost.
  */
 function getBaseUrl() {
-  return (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  return getAppBaseUrl();
 }
 
 async function resolveDisplayName(email: string): Promise<string> {
@@ -166,6 +167,8 @@ async function buildHtml(
     role === "owner"
       ? await resolveDisplayName(booking.userEmail)
       : await resolveDisplayName(recipientEmail);
+  const safeRecipientName = escapeHtml(recipientName);
+  const safeOrganizerName = escapeHtml(booking.userName);
 
   let title = "";
   let intro = "";
@@ -176,25 +179,25 @@ async function buildHtml(
     switch (kind) {
       case "created":
         title = "Convite de Reunião";
-        intro = `Olá <strong>${recipientName}</strong>, você foi convidado para uma reunião feita por <strong>${booking.userName}</strong>.`;
+        intro = `Olá <strong>${safeRecipientName}</strong>, você foi convidado para uma reunião feita por <strong>${safeOrganizerName}</strong>.`;
         highlightLabel = "Detalhes da reunião";
         highlightColor = "#16a34a";
         break;
       case "updated":
         title = "Reunião Remarcada";
-        intro = `Olá <strong>${recipientName}</strong>, a reunião organizada por <strong>${booking.userName}</strong> foi <strong>remarcada</strong>. Confira os novos detalhes abaixo.`;
+        intro = `Olá <strong>${safeRecipientName}</strong>, a reunião organizada por <strong>${safeOrganizerName}</strong> foi <strong>remarcada</strong>. Confira os novos detalhes abaixo.`;
         highlightLabel = "Novos detalhes da reunião";
         highlightColor = "#f97316";
         break;
       case "canceled":
         title = "Reunião Cancelada";
-        intro = `Olá <strong>${recipientName}</strong>, a reunião organizada por <strong>${booking.userName}</strong> foi <strong>cancelada</strong>.`;
+        intro = `Olá <strong>${safeRecipientName}</strong>, a reunião organizada por <strong>${safeOrganizerName}</strong> foi <strong>cancelada</strong>.`;
         highlightLabel = "Reunião cancelada";
         highlightColor = "#dc2626";
         break;
       case "reminder":
         title = "Lembrete de Reunião";
-        intro = `Olá <strong>${recipientName}</strong>, este é um lembrete da reunião organizada por <strong>${booking.userName}</strong>.`;
+        intro = `Olá <strong>${safeRecipientName}</strong>, este é um lembrete da reunião organizada por <strong>${safeOrganizerName}</strong>.`;
         highlightLabel = "Lembrete de reunião";
         highlightColor = "#3b82f6";
         break;
@@ -203,25 +206,25 @@ async function buildHtml(
     switch (kind) {
       case "created":
         title = "Confirmação de Agendamento";
-        intro = `Olá <strong>${recipientName}</strong>, sua reserva foi registrada com sucesso.`;
+        intro = `Olá <strong>${safeRecipientName}</strong>, sua reserva foi registrada com sucesso.`;
         highlightLabel = "Detalhes da reserva";
         highlightColor = "#16a34a";
         break;
       case "updated":
         title = "Reserva Remarcada";
-        intro = `Olá <strong>${recipientName}</strong>, sua reserva foi <strong>remarcada</strong>. Confira os novos detalhes abaixo.`;
+        intro = `Olá <strong>${safeRecipientName}</strong>, sua reserva foi <strong>remarcada</strong>. Confira os novos detalhes abaixo.`;
         highlightLabel = "Novos detalhes da reserva";
         highlightColor = "#f97316";
         break;
       case "canceled":
         title = "Reserva Cancelada";
-        intro = `Olá <strong>${recipientName}</strong>, sua reserva foi <strong>cancelada</strong>.`;
+        intro = `Olá <strong>${safeRecipientName}</strong>, sua reserva foi <strong>cancelada</strong>.`;
         highlightLabel = "Reserva cancelada";
         highlightColor = "#dc2626";
         break;
       case "reminder":
         title = "Lembrete de Reserva";
-        intro = `Olá <strong>${recipientName}</strong>, este é um lembrete da sua reserva que ocorrerá em breve.`;
+        intro = `Olá <strong>${safeRecipientName}</strong>, este é um lembrete da sua reserva que ocorrerá em breve.`;
         highlightLabel = "Lembrete de reserva";
         highlightColor = "#3b82f6";
         break;
@@ -268,7 +271,7 @@ async function buildHtml(
           hasQr
             ? `
           <div style="text-align:center; margin: 10px 0;">
-            <img src="${qrSrc}" alt="QR Code" style="width:160px;height:160px;display:block;margin:0 auto;border:0;outline:none;text-decoration:none;" />
+            <img src="${escapeHtml(qrSrc)}" alt="QR Code" style="width:160px;height:160px;display:block;margin:0 auto;border:0;outline:none;text-decoration:none;" />
             <p style="margin:8px 0 0 0; font-size:12px; color:#6b7280;">
               Aponte a câmera para entrar
             </p>
@@ -284,7 +287,7 @@ async function buildHtml(
             Link direto:
           </p>
           <p style="margin:6px 0 0 0; font-size:13px;">
-            <a href="${teamsUrl}" style="color:#2563eb; word-break:break-all;">${teamsUrl}</a>
+            <a href="${escapeHtml(teamsUrl)}" style="color:#2563eb; word-break:break-all;">${escapeHtml(teamsUrl)}</a>
           </p>
         `
             : ""
@@ -303,7 +306,7 @@ async function buildHtml(
       </p>
 
       <div style="text-align:center;margin:20px 0;">
-        <a href="${agendaLink}" style="background:${highlightColor};color:white;padding:10px 18px;border-radius:6px;text-decoration:none;font-size:14px;display:inline-block;">
+        <a href="${escapeHtml(agendaLink)}" style="background:${highlightColor};color:white;padding:10px 18px;border-radius:6px;text-decoration:none;font-size:14px;display:inline-block;">
           ${buttonLabel}
         </a>
       </div>
@@ -320,7 +323,7 @@ async function buildHtml(
       </div>
 
       <div style="text-align:center;margin:18px 0;">
-        <a href="${registerLink.toString()}" style="background:#f97316;color:white;padding:10px 18px;border-radius:6px;text-decoration:none;font-size:14px;display:inline-block;">
+        <a href="${escapeHtml(registerLink.toString())}" style="background:#f97316;color:white;padding:10px 18px;border-radius:6px;text-decoration:none;font-size:14px;display:inline-block;">
           Criar cadastro
         </a>
       </div>
@@ -334,7 +337,7 @@ async function buildHtml(
       <div style="text-align:center;margin-bottom:20px;">
         ${
           logoSrc
-            ? `<img src="${logoSrc}" alt="Peterfrut Logo" style="width:180px;height:auto;border:0;outline:none;text-decoration:none;" />`
+            ? `<img src="${escapeHtml(logoSrc)}" alt="Peterfrut Logo" style="width:180px;height:auto;border:0;outline:none;text-decoration:none;" />`
             : `<div style="font-weight:700;font-size:18px;color:#111827;">Peterfrut</div>`
         }
       </div>
@@ -352,12 +355,12 @@ async function buildHtml(
           ${highlightLabel}
         </p>
 
-        ${booking.title ? `<p style="margin:4px 0;"><strong>Título:</strong> ${booking.title}</p>` : ""}
-        <p style="margin:4px 0;"><strong>Sala:</strong> ${booking.roomName}</p>
-        <p style="margin:4px 0;"><strong>Data:</strong> ${dateLong}</p>
-        <p style="margin:4px 0;"><strong>Horário:</strong> ${timeLabel}</p>
-        <p style="margin:4px 0;"><strong>Responsável:</strong> ${booking.userName} &lt;${booking.userEmail}&gt;</p>
-        <p style="margin:4px 0;"><strong>Participantes:</strong> ${participantsList}</p>
+        ${booking.title ? `<p style="margin:4px 0;"><strong>Título:</strong> ${escapeHtml(booking.title)}</p>` : ""}
+        <p style="margin:4px 0;"><strong>Sala:</strong> ${escapeHtml(booking.roomName)}</p>
+        <p style="margin:4px 0;"><strong>Data:</strong> ${escapeHtml(dateLong)}</p>
+        <p style="margin:4px 0;"><strong>Horário:</strong> ${escapeHtml(timeLabel)}</p>
+        <p style="margin:4px 0;"><strong>Responsável:</strong> ${escapeHtml(booking.userName)} &lt;${escapeHtml(booking.userEmail)}&gt;</p>
+        <p style="margin:4px 0;"><strong>Participantes:</strong> ${escapeHtml(participantsList)}</p>
       </div>
 
       ${meetingBlock}

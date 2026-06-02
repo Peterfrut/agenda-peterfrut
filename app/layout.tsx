@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import "./globals.css"
 import { Toaster } from "@/app/components/ui/sonner"
@@ -6,7 +6,6 @@ import { ThemeProvider } from "./components/ThemeProvider"
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Analytics } from "@vercel/analytics/next"
 import { SidebarProvider, SidebarTrigger } from "@/app/components/ui/sidebar"
-import { AppSidebar } from "@/app/components/AppSidebar"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -22,11 +21,14 @@ export const metadata: Metadata = {
   title: "Agenda Peterfrut",
   description: "Agenda de salas Peterfrut",
   manifest: "/manifest.json",
-  themeColor: "#0f172a",
   icons: {
     icon: "../Logo.ico",
     apple: "/pwa/icon-192.png",
   },
+}
+
+export const viewport: Viewport = {
+  themeColor: "#0f172a",
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -37,7 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
       </head>
 
-      <body className="bg-background text-foreground">
+      <body className={`${geistSans.variable} ${geistMono.variable} bg-background text-foreground`}>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
           <SidebarProvider defaultOpen={false}>
             <div className="flex min-h-dvh w-full">

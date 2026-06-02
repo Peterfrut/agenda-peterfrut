@@ -1,11 +1,12 @@
 "use client"
 
+import { useMemo } from "react"
 import useSWR from "swr"
 import { ChevronLeft, UsersRound } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card"
 
-import { columns } from "./columns"
+import { getColumns } from "./columns"
 import { DataTable } from "./data-table"
 import { UserRow } from "@/lib/types/users"
 import { Button } from "../components/ui/button"
@@ -19,12 +20,13 @@ const fetcher = (url: string) =>
   })
 
 export default function UsersPage() {
-  const { data, isLoading } = useSWR<{ ok: boolean; users: UserRow[] }>(
+  const { data, isLoading, mutate } = useSWR<{ ok: boolean; users: UserRow[] }>(
     "/api/users?page=1&pageSize=100",
     fetcher
   )
   const router = useRouter();
   const users = data?.users ?? []
+  const columns = useMemo(() => getColumns(mutate), [mutate])
 
   return (
     <div className="max-w-6xl mx-auto p-4">

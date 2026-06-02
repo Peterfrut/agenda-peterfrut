@@ -119,7 +119,7 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
     : `/api/bookings?roomId=${roomId}&date=${isoDate}&_k=${reloadKey}`;
 
   // Pegamos mutate
-  const { data: bookings, isLoading, mutate, isValidating } = useSWR<Booking[]>(
+  const { data: bookings, isLoading, mutate } = useSWR<Booking[]>(
     swrKey,
     fetcher,
     {
@@ -130,13 +130,13 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
 
   const { data: me } = useSWR<{
     authenticated: boolean;
-    user: { email: string; name: string | null; id: string | null } | null;
+    user: { email: string; name: string | null; id: string | null; role?: string } | null;
   }>("/api/auth/me", fetcher);
 
   const currentEmail =
     me?.authenticated && me.user?.email ? me.user.email.toLowerCase() : null;
 
-  const isAdmin = (me as any)?.authenticated && (me as any)?.user?.role === "admin";
+  const isAdmin = me?.authenticated && me.user?.role === "admin";
 
   const [editing, setEditing] = useState<Booking | null>(null);
   const [newStartTime, setNewStartTime] = useState("");
@@ -184,8 +184,8 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
 
       // Mantém seu comportamento atual de recarregar o calendário
       onReload();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erro ao remarcar");
       throw e;
     } finally {
       setSaving(false);
@@ -247,9 +247,9 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
         <div className="flex flex-col gap-2">
           {list.map((b) => {
             const isOwner =
-              currentEmail &&
-              b.userEmail.toLowerCase() === currentEmail.toLowerCase();
-            const canManage = !!isAdmin || !!isOwner;
+              b.isOwner ??
+              Boolean(currentEmail && b.userEmail && b.userEmail.toLowerCase() === currentEmail.toLowerCase());
+            const canManage = b.canManage ?? (!!isAdmin || !!isOwner);
             return (
               <Card
                 key={b.id}
@@ -318,9 +318,9 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
                         Origem:
                       </span>
                       <span className="text-muted-foreground">
-                        {((b as any)?.provider === "ics"
+                        {(b.provider === "ics"
                           ? "Importação"
-                          : (b as any)?.provider === "google"
+                          : b.provider === "google"
                             ? "Google"
                             : "Local")}
                       </span>
@@ -333,7 +333,7 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
 
                     const userEmailLower = normalize(currentEmail);
 
-                    const raw = (b as any)?.participantsEmails;
+                    const raw = b.participantsEmails;
 
                     const participantsArray: string[] = Array.isArray(raw)
                       ? raw
@@ -346,15 +346,14 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
                           .filter(Boolean)
                         : [];
 
-                    const ownerEmailLower = normalize((b as any)?.userEmail);
+                    const ownerEmailLower = normalize(b.userEmail);
                     const isOwner =
-                      !!userEmailLower && userEmailLower === ownerEmailLower;
+                      b.isOwner ?? (!!userEmailLower && userEmailLower === ownerEmailLower);
 
                     const isParticipant =
-                      !!userEmailLower &&
-                      participantsArray.includes(userEmailLower);
+                      b.isParticipant ?? (!!userEmailLower && participantsArray.includes(userEmailLower));
 
-                    if (!(isOwner || isParticipant)) return null;
+                    if (!(b.canViewParticipants ?? (isOwner || isParticipant))) return null;
 
                     return (
                       <div className="flex flex-col gap-1">

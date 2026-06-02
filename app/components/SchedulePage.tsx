@@ -169,7 +169,7 @@ export function SchedulePage() {
   const currentEmail =
     me?.authenticated && me.user?.email ? me.user.email.toLowerCase() : null;
 
-  const isAdmin = (me as any)?.authenticated && (me as any)?.user?.role === "admin";
+  const isAdmin = me?.authenticated && me.user?.role === "admin";
 
   function handleRoomChange(nextRoomId?: string) {
     // Fecha painéis/diálogos imediatamente ao trocar de sala (evita "vazar" detalhes)
@@ -268,7 +268,7 @@ export function SchedulePage() {
     const userEmailLower = normalize(currentEmail);
     const ownerEmailLower = normalize(detailsBooking?.userEmail);
     return (
-      !!isAdmin || (
+      !!detailsBooking?.canManage || !!isAdmin || (
         !!userEmailLower &&
         !!ownerEmailLower &&
         userEmailLower === ownerEmailLower
@@ -340,8 +340,8 @@ export function SchedulePage() {
 
       await refreshAllAndClosePanels();
       setDetailsBooking(null);
-    } catch (e: any) {
-      setDetailsError(e?.message || "Erro ao remarcar");
+    } catch (e: unknown) {
+      setDetailsError(e instanceof Error ? e.message : "Erro ao remarcar");
       throw e;
     } finally {
       setSavingDetails(false);
@@ -601,9 +601,9 @@ export function SchedulePage() {
 
               <p>
                 <span className="font-semibold">Origem:</span>{" "}
-                {(detailsBooking as any)?.provider === "ics"
+                {detailsBooking.provider === "ics"
                   ? "Importação"
-                  : (detailsBooking as any)?.provider === "google"
+                  : detailsBooking.provider === "google"
                     ? "Google"
                     : "Local"}
               </p>
@@ -614,7 +614,7 @@ export function SchedulePage() {
 
                 const userEmailLower = normalize(currentEmail);
 
-                const raw = (detailsBooking as any)?.participantsEmails;
+                const raw = detailsBooking.participantsEmails;
 
                 const participantsArray: string[] = Array.isArray(raw)
                   ? raw.map((e) => normalize(String(e))).filter(Boolean)
@@ -625,15 +625,14 @@ export function SchedulePage() {
                       .filter(Boolean)
                     : [];
 
-                const ownerEmailLower = normalize((detailsBooking as any)?.userEmail);
+                const ownerEmailLower = normalize(detailsBooking.userEmail);
                 const isOwner =
-                  !!userEmailLower && userEmailLower === ownerEmailLower;
+                  detailsBooking.isOwner ?? (!!userEmailLower && userEmailLower === ownerEmailLower);
 
                 const isParticipant =
-                  !!userEmailLower &&
-                  participantsArray.includes(userEmailLower);
+                  detailsBooking.isParticipant ?? (!!userEmailLower && participantsArray.includes(userEmailLower));
 
-                if (!(isOwner || isParticipant)) return null;
+                if (!(detailsBooking.canViewParticipants ?? (isOwner || isParticipant))) return null;
 
                 return (
                   <div className="flex flex-col gap-1 pt-2">

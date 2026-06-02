@@ -14,6 +14,20 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 
 const fetcher = (url: string) => fetch(url).then((r) => (r.ok ? r.json() : null));
 
+type ImportResult = {
+  ok: boolean;
+  roomName?: string;
+  externalSource?: string | null;
+  inserted?: number;
+  imported?: number;
+  updated?: number;
+  skipped?: number;
+  crossDaySkipped?: number;
+  noUidSkipped?: number;
+  limitSkipped?: number;
+  errors?: Array<{ uid?: string; message: string }>;
+};
+
 export default function ImportPage() {
   const router = useRouter();
   const { data: me } = useSWR<{
@@ -26,13 +40,17 @@ export default function ImportPage() {
   const [roomId, setRoomId] = useState<string>(rooms[0]?.id ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<ImportResult | null>(null);
 
   useEffect(() => {
     if (!me) return;
     if (!me.authenticated) router.replace("/login");
     else if (me.user?.role !== "admin") router.replace("/");
   }, [me, router]);
+
+  const [open, setOpen] = useState(false)
+
+  if (!me?.authenticated || me.user?.role !== "admin") return null;
 
   async function onSubmit() {
     if (!roomId) throw new Error("Selecione uma sala.");
@@ -62,8 +80,6 @@ export default function ImportPage() {
       setLoading(false);
     }
   }
-
-  const [open, setOpen] = useState(false)
 
   return (
     <div>
@@ -139,14 +155,14 @@ export default function ImportPage() {
                 onClick={() => {
                   toast.promise(onSubmit(), {
                     loading: "Importando eventos...",
-                    success: (json: any) => {
+                    success: (json: ImportResult) => {
                       // fecha somente no sucesso
                       setOpen(false);
 
                       return `Importação concluída: +${json.imported ?? json.inserted ?? 0} novos, ${json.updated ?? 0
                         } atualizados, ${json.skipped ?? 0} ignorados.`;
                     },
-                    error: (e: any) => e?.message ?? "Erro ao importar",
+                    error: (e: unknown) => e instanceof Error ? e.message : "Erro ao importar",
                   });
                 }}
               >
@@ -159,19 +175,20 @@ export default function ImportPage() {
                 <div>
                   <b>Sala:</b> {result.roomName}
                 </div>
-                {result.sourceCalendar ? (
+                {result.externalSource ? (
                   <div>
-                    <b>Calendário:</b> {result.sourceCalendar}
+                    <b>Calendário:</b> {result.externalSource}
                   </div>
                 ) : null}
                 <div>
-                  <b>Novos:</b> {result.imported} · <b>Atualizados:</b> {result.updated} · <b>Ignorados:</b> {result.skipped}
+                  <b>Novos:</b> {result.imported ?? result.inserted ?? 0} · <b>Atualizados:</b> {result.updated ?? 0} · <b>Ignorados:</b>{" "}
+                  {(result.skipped ?? 0) + (result.crossDaySkipped ?? 0) + (result.noUidSkipped ?? 0) + (result.limitSkipped ?? 0)}
                 </div>
                 {Array.isArray(result.errors) && result.errors.length ? (
                   <details className="mt-2">
                     <summary className="cursor-pointer">Ver erros ({result.errors.length})</summary>
                     <ul className="list-disc pl-5 mt-2">
-                      {result.errors.map((er: any, idx: number) => (
+                      {result.errors.map((er, idx: number) => (
                         <li key={idx}>
                           {er.uid ? <span className="font-mono">{er.uid}</span> : "(sem UID)"}: {er.message}
                         </li>

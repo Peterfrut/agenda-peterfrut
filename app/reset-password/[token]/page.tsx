@@ -9,6 +9,8 @@ import { Alert, AlertDescription } from "@/app/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/app/components/ui/tooltip";
 import { Eye, EyeOff } from "lucide-react";
 import { Label } from "@/app/components/ui/label";
+import { PASSWORD_RULES_MESSAGE, validatePassword } from "@/lib/formatters";
+import { PasswordRules } from "@/app/components/PasswordRules";
 
 async function readJsonSafe(res: Response) {
   const ct = res.headers.get("content-type") || "";
@@ -25,7 +27,7 @@ export default function ResetPasswordPage() {
   const router = useRouter();
   const params = useParams();
 
-  const rawToken = (params as any)?.token;
+  const rawToken = (params as Record<string, string | string[] | undefined>).token;
   const token = useMemo(
     () => (Array.isArray(rawToken) ? rawToken[0] : rawToken),
     [rawToken]
@@ -97,8 +99,8 @@ export default function ResetPasswordPage() {
       setErr("Token inválido.");
       return;
     }
-    if (!password.trim() || password.length < 6) {
-      setErr("Informe uma senha com pelo menos 6 caracteres.");
+    if (!validatePassword(password)) {
+      setErr(PASSWORD_RULES_MESSAGE);
       return;
     }
     if (password !== confirm) {
@@ -121,8 +123,8 @@ export default function ResetPasswordPage() {
 
       setMsg("Senha redefinida com sucesso. Você será direcionado para o login.");
       setTimeout(() => router.push("/login"), 1200);
-    } catch (e: any) {
-      setErr(e.message || "Erro inesperado.");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Erro inesperado.");
     } finally {
       setLoading(false);
     }
@@ -317,7 +319,13 @@ export default function ResetPasswordPage() {
               </div>
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
+            <PasswordRules password={password} confirm={confirm} />
+
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={loading || !validatePassword(password) || password !== confirm}
+            >
               {loading ? "Salvando..." : "Redefinir senha"}
             </Button>
           </>

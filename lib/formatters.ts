@@ -109,9 +109,36 @@ export function parseEmailList(input: string): {
   return { emails: unique, invalid };
 }
 
+export const PASSWORD_RULES_MESSAGE =
+  "A senha deve ter no mínimo 10 caracteres, conter 1 letra maiúscula, 1 número e 1 símbolo.";
+
+export function getPasswordRules(password: string) {
+  return [
+    {
+      key: "length",
+      label: "No minimo 10 caracteres",
+      valid: password.length >= 10,
+    },
+    {
+      key: "uppercase",
+      label: "1 letra maiuscula",
+      valid: /[A-Z]/.test(password),
+    },
+    {
+      key: "number",
+      label: "1 numero",
+      valid: /\d/.test(password),
+    },
+    {
+      key: "symbol",
+      label: "1 simbolo",
+      valid: /[\W_]/.test(password),
+    },
+  ];
+}
+
 export function validatePassword(password: string): boolean {
-  const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{10,}$/;
-  return passwordRegex.test(password);
+  return getPasswordRules(password).every((rule) => rule.valid);
 }
 
 export function normalizeToken(v: unknown) {

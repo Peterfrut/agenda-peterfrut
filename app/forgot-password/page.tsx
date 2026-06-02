@@ -44,8 +44,8 @@ export default function ForgotPasswordPage() {
       }
 
       setMsg("Se este e-mail existir no sistema, enviaremos um link de redefinição.");
-    } catch (e: any) {
-      setError(e.message || "Erro inesperado.");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erro inesperado.");
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,7 @@
 import { resend, getFromEmail } from "./mailer";
 import fs from "fs";
 import path from "path";
+import { escapeHtml } from "@/lib/security";
 
 function displayNameFromEmail(email: string) {
   return email.split("@")[0];
@@ -12,6 +13,8 @@ export async function sendEmailVerification(opts: {
   verifyUrl: string;
 }) {
   const displayName = opts.name?.trim() ? opts.name : displayNameFromEmail(opts.to);
+  const safeDisplayName = escapeHtml(displayName);
+  const safeVerifyUrl = escapeHtml(opts.verifyUrl);
   const logoPath = path.join(process.cwd(), "public", "logo_peterfrut.png");
   const logoBuffer = fs.readFileSync(logoPath);
   const html = `
@@ -30,7 +33,7 @@ export async function sendEmailVerification(opts: {
       <h2 style="margin:0 0 12px 0; color:#111827; text-align:center;">Confirmação de e-mail</h2>
 
       <p style="font-size:14px; color:#374151;">
-        Olá <strong>${displayName}</strong>, seu cadastro foi criado. Para ativar sua conta, confirme seu e-mail clicando no botão abaixo.
+        Olá <strong>${safeDisplayName}</strong>, seu cadastro foi criado. Para ativar sua conta, confirme seu e-mail clicando no botão abaixo.
       </p>
 
       <p>
@@ -38,7 +41,7 @@ export async function sendEmailVerification(opts: {
       </p>
 
       <div style="text-align:center; margin:18px 0;">
-        <a href="${opts.verifyUrl}" style="
+        <a href="${safeVerifyUrl}" style="
           background:#16a34a; color:white; padding:10px 18px; border-radius:6px;
           text-decoration:none; font-size:14px; display:inline-block;
         ">
@@ -47,7 +50,7 @@ export async function sendEmailVerification(opts: {
       </div>
 
       <p style="font-size:12px; color:#6b7280;">Se o botão não funcionar, copie e cole este link:</p>
-      <p style="font-size:12px; color:#111827; word-break: break-all;">${opts.verifyUrl}</p>
+      <p style="font-size:12px; color:#111827; word-break: break-all;">${safeVerifyUrl}</p>
 
       <p style="font-size:11px; color:#9ca3af; text-align:center; margin-top:24px;">
         Este e-mail foi gerado automaticamente por Agenda Peterfrut.

@@ -18,7 +18,7 @@ export default function VerifyEmailPage() {
   const router = useRouter();
   const params = useParams();
   const token = useMemo(() => {
-    const raw = (params as any)?.token;
+    const raw = (params as Record<string, string | string[] | undefined>).token;
     return Array.isArray(raw) ? raw[0] : raw;
   }, [params]);
 
@@ -55,9 +55,9 @@ export default function VerifyEmailPage() {
 
         setStatus("INVALID");
         setMsg("Link inválido. Solicite um novo link abaixo.");
-      } catch (e: any) {
+      } catch (e: unknown) {
         setStatus("INVALID");
-        setMsg(e.message || "Erro inesperado.");
+        setMsg(e instanceof Error ? e.message : "Erro inesperado.");
       }
     })();
   }, [token, router]);
@@ -84,8 +84,8 @@ export default function VerifyEmailPage() {
       if (!res.ok || !data.ok) throw new Error(data.message || "Erro ao reenviar.");
 
       setResentMsg("Se este e-mail existir e não estiver verificado, enviaremos um novo link.");
-    } catch (e: any) {
-      setResentErr(e.message || "Erro ao reenviar.");
+    } catch (e: unknown) {
+      setResentErr(e instanceof Error ? e.message : "Erro ao reenviar.");
     } finally {
       setResending(false);
     }

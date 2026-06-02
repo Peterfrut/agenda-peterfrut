@@ -10,7 +10,8 @@ import { permissionsIcons, statusIcons, verifiedIcons, normalize } from "@/lib/a
 import { UserRow } from "@/lib/types/users"
 import { UserActions } from "./user-actions"
 
-export const columns: ColumnDef<UserRow>[] = [
+export function getColumns(mutate?: () => Promise<unknown>): ColumnDef<UserRow>[] {
+  return [
   {
     accessorKey: "name",
     header: ({ column }) => {
@@ -76,10 +77,10 @@ export const columns: ColumnDef<UserRow>[] = [
   },
   {
     id: "status",
-    accessorFn: (row) => (row.emailVerifiedAt ? "Active" : "Inactive"),
+    accessorFn: (row) => (row.active ? "Active" : "Inactive"),
     header: "Status",
     cell: ({ row }) => {
-      const statusRaw = row.original.emailVerifiedAt ? "Active" : "Inactive"
+      const statusRaw = row.original.active ? "Active" : "Inactive"
       const statusKey = normalize(statusRaw)
       const statusInfo = statusIcons[statusKey] ?? statusIcons._default
 
@@ -94,8 +95,11 @@ export const columns: ColumnDef<UserRow>[] = [
   {
     id: "actions",
     header: "Ações",
-    cell: ({ row }) => <UserActions user={row.original} />,
+    cell: ({ row }) => <UserActions user={row.original} mutate={mutate} />,
     enableSorting: false,
     enableHiding: false,
   },
-]
+  ]
+}
+
+export const columns = getColumns()

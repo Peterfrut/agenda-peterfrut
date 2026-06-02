@@ -37,7 +37,7 @@ import { UserRow } from "@/lib/types/users"
 
 type Props = {
   user: UserRow
-  mutate?: () => Promise<any>
+  mutate?: () => Promise<unknown>
 }
 
 export function UserActions({ user, mutate }: Props) {
@@ -51,12 +51,14 @@ export function UserActions({ user, mutate }: Props) {
   const [name, setName] = useState(user.name ?? "")
   const [email, setEmail] = useState(user.email ?? "")
   const [role, setRole] = useState<"user" | "admin">(user.role === "admin" ? "admin" : "user")
+  const [userActive, setUserActive] = useState<boolean>(user.active)
   const [userVerified, setUserVerified] = useState<boolean>(!!user.emailVerifiedAt)
 
   function openEdit() {
     setName(user.name ?? "")
     setEmail(user.email ?? "")
     setRole(user.role === "admin" ? "admin" : "user")
+    setUserActive(user.active)
     setUserVerified(!!user.emailVerifiedAt)
 
     setEditing(true)
@@ -86,6 +88,7 @@ export function UserActions({ user, mutate }: Props) {
           name,
           email,
           role,
+          active: userActive,
           verified: userVerified,
         }),
       })
@@ -97,8 +100,8 @@ export function UserActions({ user, mutate }: Props) {
 
       if (mutate) await mutate()
       closeEdit()
-    } catch (e: any) {
-      toast.error(e?.message ?? "Erro")
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro")
     } finally {
       setSaving(false)
     }
@@ -125,8 +128,8 @@ export function UserActions({ user, mutate }: Props) {
       setDeleting(false)
 
       if (mutate) await mutate()
-    } catch (e: any) {
-      toast.error(e?.message ?? "Erro")
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro")
     } finally {
       setSaving(false)
     }
@@ -174,7 +177,24 @@ export function UserActions({ user, mutate }: Props) {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <div className="space-y-1">
+                <Label>Status</Label>
+                <Select
+                  value={userActive ? "active" : "inactive"}
+                  onValueChange={(v) => setUserActive(v === "active")}
+                  disabled={!isEditing || saving}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Ativo</SelectItem>
+                    <SelectItem value="inactive">Inativo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-1">
                 <Label>Verificado</Label>
                 <Select
