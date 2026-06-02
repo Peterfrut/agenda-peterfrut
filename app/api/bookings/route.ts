@@ -264,9 +264,17 @@ function toBookingDto(booking: PrismaBooking, user: SessionUser) {
   };
 }
 
+async function sendBookingEmailSafely(kind: "created" | "updated" | "canceled" | "reminder", booking: BookingLike) {
+  try {
+    await sendBookingEmail(kind, booking);
+  } catch (err) {
+    console.error(`[BOOKING MAIL] Falha ao enviar e-mail de ${kind}. A reserva foi mantida.`, err);
+  }
+}
+
 async function lockBookingDay(tx: Prisma.TransactionClient, roomId: string, date: string, email?: string) {
   const scope = email ? `${roomId}:${date}:${email}` : `${roomId}:${date}`;
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${scope}))`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${scope}))`;
 }
 
 // -------------------- GET -------------------- //
@@ -448,7 +456,7 @@ export async function POST(req: NextRequest) {
       return rows;
     });
 
-    await sendBookingEmail("created", created[0] as BookingLike);
+    await sendBookingEmailSafely("created", created[0] as BookingLike);
 
     return NextResponse.json(toBookingDto(created[0], auth.user), {
       status: 201,
@@ -545,7 +553,7 @@ export async function PATCH(req: NextRequest) {
       });
     });
 
-    await sendBookingEmail("updated", updated as BookingLike);
+    await sendBookingEmailSafely("updated", updated as BookingLike);
     return NextResponse.json(toBookingDto(updated, auth.user));
   } catch (err: unknown) {
     console.error(err);
@@ -588,7 +596,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     await prisma.booking.delete({ where: { id: booking.id } });
-    await sendBookingEmail("canceled", booking as BookingLike);
+    await sendBookingEmailSafely("canceled", booking as BookingLike);
 
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
