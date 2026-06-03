@@ -1,31 +1,76 @@
-# Resend (e-mails)
+# E-mails com Resend
 
-## Onde está a integração
+O projeto usa Resend para e-mails.
 
-- `lib/mailer.ts`
-  - Inicializa `Resend` com `RESEND_API_KEY`.
-  - Define `getFromEmail()` com fallback.
-- `lib/mail.ts`
-  - Monta HTML dos e-mails, subject e destinatários.
+## Tipos
 
-## Tipos de e-mail
+### Autenticacao
 
-- `created`: criação
-- `updated`: remarcação
-- `canceled`: cancelamento
-- `reminder`: lembrete
+- Verificacao de e-mail: `lib/verify-email-mail.ts`.
+- Reset de senha: `lib/password-reset-mail.ts`.
 
-## Requisitos em produção
+### Reservas
 
-- `NEXT_PUBLIC_APP_URL` deve ser HTTPS e apontar para o domínio real.
-- `EMAIL_FROM` deve estar configurado e o domínio deve estar verificado no Resend (DNS).
+- Criacao.
+- Remarcacao.
+- Cancelamento.
+- Lembrete.
 
-## Testes
+Arquivo:
 
-- Validar em dev com um destinatário controlado.
-- Em caso de falhas, verificar logs do provedor e também logs do servidor (API Route).
+- `lib/mail.ts`.
 
-## Rotação de chave
+E-mails de reserva sao melhor esforco: se falharem, a reserva continua salva.
 
-- Se a chave vazar, revogue a antiga no Resend e gere uma nova.
-- Atualize imediatamente as variáveis no ambiente de produção.
+## Variaveis
+
+```env
+RESEND_API_KEY="re_..."
+EMAIL_FROM="Agenda Peterfrut <agenda@dominio-verificado.com>"
+NEXT_PUBLIC_APP_URL="https://agenda.suaempresa.com"
+```
+
+## Configurar
+
+1. Criar conta no Resend.
+2. Verificar dominio.
+3. Configurar DNS.
+4. Gerar API key.
+5. Configurar `RESEND_API_KEY`.
+6. Configurar `EMAIL_FROM`.
+
+## Testar
+
+1. Criar usuario e receber verificacao.
+2. Solicitar reset de senha.
+3. Criar reserva.
+4. Adicionar participante.
+
+## Erros comuns
+
+### `API key is invalid`
+
+Causa:
+
+- chave invalida, revogada ou ausente.
+
+Solucao:
+
+- gerar nova chave;
+- atualizar variavel;
+- reiniciar servidor.
+
+### Link aponta para localhost
+
+Corrigir:
+
+```env
+NEXT_PUBLIC_APP_URL="https://agenda.suaempresa.com"
+```
+
+## Imagens nos e-mails
+
+Arquivos usados:
+
+- `public/logo_peterfrut.png`
+- `public/qr/*`

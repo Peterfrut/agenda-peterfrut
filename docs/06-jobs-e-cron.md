@@ -1,30 +1,70 @@
-# Jobs e Cron
+# Jobs e cron
 
-## Job de lembretes
+O sistema possui job para enviar lembretes antes do horario da reserva.
 
-Endpoint:
-- `GET /api/jobs/remidenrs`
+## Endpoint recomendado
 
-O job:
-- Busca `Booking` com `status = pending` e `reminderSent = false`
-- Envia lembrete para reservas com início dentro de **15 minutos**
-- Marca `reminderSent = true`
+```text
+GET /api/jobs/reminders
+POST /api/jobs/reminders
+```
 
-## Como agendar
+A rota antiga `/api/jobs/remidenrs` existe por compatibilidade.
 
-Você precisa de um disparador externo (cron):
+## O que o job faz
+
+1. Busca reservas:
+   - `status = confirmed`
+   - `reminderSent = false`
+2. Filtra reservas que comecam nos proximos 15 minutos.
+3. Marca `reminderSent = true`.
+4. Envia e-mail.
+5. Se falhar, volta `reminderSent = false`.
+
+## Seguranca
+
+Em producao:
+
+```env
+CRON_SECRET="segredo-forte"
+```
+
+Chamada:
+
+```bash
+curl -X POST "https://agenda.suaempresa.com/api/jobs/reminders" \
+  -H "Authorization: Bearer seu-segredo"
+```
+
+Tambem aceita:
+
+```bash
+curl -X POST "https://agenda.suaempresa.com/api/jobs/reminders" \
+  -H "x-cron-secret: seu-segredo"
+```
+
+## Frequencia
+
+Recomendado:
+
+```text
+a cada 5 minutos
+```
+
+Pode usar:
 
 - Vercel Cron
 - GitHub Actions schedule
-- UptimeRobot (HTTP monitor)
+- UptimeRobot
 - Cloudflare Cron Triggers
+- cron interno
 
-Frequência recomendada: **a cada 5 minutos**.
+## Retorno esperado
 
-## Segurança
-
-Recomendado proteger este endpoint com um segredo de job (ex.: header com token), para evitar abusos.
-
-Sugestão de implementação:
-- Criar `JOB_SECRET` no `.env`
-- Exigir `Authorization: Bearer <JOB_SECRET>` no endpoint
+```json
+{
+  "ok": true,
+  "checked": 10,
+  "reminded": 1
+}
+```

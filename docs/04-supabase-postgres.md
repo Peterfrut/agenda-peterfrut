@@ -1,30 +1,81 @@
-# Supabase (Postgres)
+# Banco, Prisma e Supabase
 
-## O que este projeto usa
+O projeto usa Postgres com Prisma ORM.
 
-- Supabase como Postgres gerenciado.
-- Prisma como ORM/migrations.
+## Arquivos
 
-## Conectar e aplicar migrations
+- `prisma/schema.prisma`: modelos.
+- `prisma/migrations/*`: migrations.
+- `lib/prisma.ts`: client usado pela aplicacao.
 
-1) Obter a string `DATABASE_URL` no Supabase.
-2) Configurar `.env` local e/ou variáveis do ambiente de produção.
-3) Aplicar migrations:
+## Comandos
+
+Gerar client:
+
+```bash
+npx prisma generate
+```
+
+Criar/aplicar migration em desenvolvimento:
+
+```bash
+npx prisma migrate dev --name nome_da_migration
+```
+
+Aplicar migrations em producao:
 
 ```bash
 npx prisma migrate deploy
 ```
 
-## Operação
+Abrir Prisma Studio:
 
-- Backups: usar rotina do Supabase (ou backup externo) — documentar periodicidade.
-- Monitorar conexões: se usar pooler/pgbouncer, garanta parâmetros compatíveis.
-- Mudanças de schema:
-  - Em dev: `npx prisma migrate dev --name <nome>`
-  - Em prod: `npx prisma migrate deploy` (nunca `migrate dev`).
+```bash
+npx prisma studio
+```
 
-## Itens para auditoria
+Status:
 
-- Índices existentes (ver `schema.prisma`):
-  - `Holiday`: índices por `(roomId, date)` e por `date`
-  - Tokens: índices por `userId` e `expiresAt`
+```bash
+npx prisma migrate status
+```
+
+## Migrations importantes
+
+- `20251222134657_init`: estrutura inicial.
+- `20251223113933_add_holidays`: feriados.
+- `20251223170426_add_user_roles`: roles.
+- `20260225110601_add_ics_import_fields`: campos ICS.
+- `20260225180247_booking_external_fields`: ajustes de booking.
+- `20260601120000_scope_booking_external_id_by_room`: unicidade ICS por sala.
+- `20260601123000_add_user_active_flag`: campo `User.active`.
+
+## Cuidados
+
+### `User.active`
+
+Campo usado para bloquear usuario. Se a migration nao foi aplicada, login e agendamento podem falhar.
+
+### `Booking.provider`, `roomId`, `externalId`
+
+Existe constraint unica:
+
+```prisma
+@@unique([provider, roomId, externalId])
+```
+
+Isso evita duplicidade de eventos importados por sala.
+
+### Datas e horas
+
+O sistema salva:
+
+- `date` como `YYYY-MM-DD`;
+- `startTime` e `endTime` como `HH:MM`.
+
+## Producao
+
+- Nunca usar `prisma migrate dev` em producao.
+- Usar `prisma migrate deploy`.
+- Conferir backup no Supabase.
+- Depois de mudar schema, rodar `npx prisma generate`.

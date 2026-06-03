@@ -1,53 +1,128 @@
 # Arquitetura
 
-## Visão geral
+## Visao geral
 
-- Next.js (App Router)
-- API Routes no próprio Next.js
-- Prisma ORM
-- Postgres (Supabase)
-- Resend para e-mails
+```text
+Usuario
+  -> Next.js / React
+  -> app/api/*
+  -> Prisma
+  -> Postgres/Supabase
+  -> Resend
+```
 
-## Pastas principais
+O frontend e o backend vivem no mesmo projeto Next.js.
 
-- `app/`
-  - Rotas, páginas e `app/api/*` (endpoints)
-- `lib/`
-  - Integrações e regras reutilizáveis
-  - `lib/prisma.ts`: client Prisma
-  - `lib/mailer.ts`: inicialização do Resend
-  - `lib/mail.ts`: templates e orquestração de e-mails
-- `prisma/`
-  - `schema.prisma` e migrations
-- `public/qr/`
-  - QR codes por sala (usados em e-mails)
+## Frontend
 
-## Modelos (Prisma)
+Arquivos principais:
 
-- `User`
-  - Usuário com `verified`, `role` e tokens de verificação/reset
-- `Booking`
-  - Reserva materializada (cada ocorrência é um registro)
-  - Campos relevantes: `roomId`, `date`, `startTime`, `endTime`, `status`, `reminderSent`
-- `Holiday`
-  - Feriados globais (roomId null) ou por sala
+- `app/page.tsx`: tela inicial da agenda.
+- `app/components/SchedulePage.tsx`: pagina principal da agenda.
+- `app/components/BookingForm.tsx`: formulario de reserva.
+- `app/components/BookingsList.tsx`: lista de reservas do dia.
+- `app/users/*`: painel administrativo de usuarios.
+- `app/import/page.tsx`: importacao ICS.
+- `app/login`, `app/register`, `app/reset-password`: auth.
 
-## Fluxos críticos
+O frontend usa SWR para buscar dados e atualizar listas sem recarregar a pagina.
 
-### Criação de agendamento
+## Backend/API
 
-1. UI chama endpoint de criação.
-2. Backend valida payload (Zod) e conflitos.
-3. Cria registros (em transação quando recorrente).
-4. Dispara e-mails via `sendBookingEmail`.
+Rotas principais:
 
-### E-mails
+- `POST /api/auth/login`
+- `POST /api/auth/register`
+- `GET /api/auth/me`
+- `POST /api/bookings`
+- `PATCH /api/bookings`
+- `DELETE /api/bookings`
+- `GET /api/users`
+- `PATCH /api/users/:id`
+- `POST /api/import`
+- `GET/POST /api/jobs/reminders`
 
-- A integração com Resend está centralizada em `lib/mailer.ts`.
-- Conteúdo HTML e anexos inline (logo/QR) ficam em `lib/mail.ts`.
+## Libs internas
 
-### Job de lembrete
+- `lib/prisma.ts`: Prisma Client.
+- `lib/auth.ts`: JWT.
+- `lib/api-auth.ts`: autenticacao por usuario real do banco.
+- `lib/security.ts`: helpers de seguranca.
+- `lib/rate-limit.ts`: rate limit simples.
+- `lib/mail.ts`: e-mails de reserva.
+- `lib/password-reset-mail.ts`: e-mail de reset.
+- `lib/verify-email-mail.ts`: e-mail de verificacao.
+- `lib/rooms.ts`: salas e expediente.
+- `lib/time.ts`: validacao de horario.
+- `lib/formatters.ts`: e-mail, senha e tokens.
 
-- Endpoint GET: `app/api/jobs/remidenrs/route.ts`.
-- Seleciona reservas futuras (janela de 15 min) e envia lembretes.
-- Precisa ser acionado por cron externo.
+## Modelos principais
+
+### `User`
+
+- `email`: unico.
+- `password`: hash bcrypt.
+- `role`: `user` ou `admin`.
+- `active`: controla acesso.
+- `verified`: marca verificacao.
+- `emailVerifiedAt`: exigido para login/sessao.
+
+Um usuario acessa APIs protegidas apenas se:
+
+- JWT valido;
+- existe no banco;
+- `active = true`;
+- `emailVerifiedAt` preenchido.
+
+### `Booking`
+
+Cada reserva e uma linha.
+
+- `roomId`
+- `roomName`
+- `title`
+- `date`: `YYYY-MM-DD`
+- `startTime`: `HH:MM`
+- `endTime`: `HH:MM`
+- `userEmail`
+- `participantsEmails`
+- `status`: padrao `confirmed`
+- `reminderSent`
+- `provider`, `externalId`, `externalSource`
+
+### `Holiday`
+
+Feriados globais ou por sala.
+
+- `roomId = null`: global.
+- `roomId = <sala>`: sala especifica.
+
+## Fluxo de reserva
+
+1. Usuario abre a agenda.
+2. Frontend chama `/api/auth/me`.
+3. Frontend carrega reservas em `/api/bookings`.
+4. Usuario envia formulario.
+5. Backend valida payload com Zod.
+6. Backend valida sala, horario, feriados e conflitos.
+7. Backend abre transacao.
+8. Backend usa `pg_advisory_xact_lock` com `$executeRaw`.
+9. Backend cria reserva.
+10. Backend tenta enviar e-mail.
+11. Se o e-mail falhar, a reserva continua salva.
+
+## Salas
+
+Definidas em `lib/rooms.ts`.
+
+Expediente:
+
+```text
+06:00 ate 17:30
+```
+
+Slots:
+
+```text
+30 minutos
+```

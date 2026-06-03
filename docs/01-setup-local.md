@@ -1,50 +1,100 @@
-# Setup local (onboarding rápido)
+# Setup local
 
-## Pré-requisitos
+## Pre-requisitos
 
-- Node.js LTS (recomendado 20+)
-- npm, pnpm ou yarn (o projeto usa `npm` nos scripts)
-- Acesso ao Supabase (ou um Postgres local)
+- Node.js 20 ou superior.
+- npm.
+- Acesso a um Postgres, preferencialmente Supabase.
+- Chave do Resend para testar e-mail.
 
-## Passo a passo
-
-1) **Instalar dependências**
+## 1. Instalar dependencias
 
 ```bash
 npm install
 ```
 
-2) **Criar `.env`**
+## 2. Criar `.env`
 
-- Copie `.env.example` para `.env`.
-- Preencha `DATABASE_URL`, `JWT_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM` e `NEXT_PUBLIC_APP_URL`.
+Use `dev_local_example.env` como base.
 
-3) **Gerar Prisma Client**
+Exemplo minimo:
+
+```env
+DATABASE_URL="postgresql://usuario:senha@host:5432/banco?schema=public"
+JWT_SECRET="uma-string-aleatoria-com-mais-de-32-caracteres"
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+RESEND_API_KEY="re_..."
+EMAIL_FROM="Alias <email@dominio-verificado.com>"
+CRON_SECRET="um-segredo-para-o-job"
+```
+
+## 3. Gerar Prisma Client
 
 ```bash
 npx prisma generate
 ```
 
-4) **Aplicar migrations**
+## 4. Aplicar migrations
 
-Se estiver apontando para um banco vazio:
+Desenvolvimento:
+
+```bash
+npx prisma migrate dev
+```
+
+Producao:
 
 ```bash
 npx prisma migrate deploy
 ```
 
-5) **Rodar em desenvolvimento**
+Importante: se a migration do campo `User.active` nao estiver aplicada, login e agendamento podem falhar.
+
+## 5. Rodar localmente
 
 ```bash
 npm run dev
 ```
 
-A aplicação sobe em `http://localhost:3000`.
+Acesse:
 
-## Smoke tests (o que validar)
+```text
+http://localhost:3000
+```
 
-- Criar usuário e fazer login
-- Criar um agendamento em uma sala
-- Confirmar que conflito de horário é bloqueado
-- Validar envio de e-mail (criação e lembrete)
-- Verificar carregamento/uso de feriados
+## 6. Criar primeiro admin
+
+O cadastro cria usuario comum. Para criar o primeiro admin, use Prisma Studio:
+
+```bash
+npx prisma studio
+```
+
+No usuario desejado:
+
+- `role = admin`
+- `active = true`
+- `verified = true`
+- `emailVerifiedAt` preenchido
+
+Ou via SQL:
+
+```sql
+UPDATE "User"
+SET role = 'admin',
+    active = true,
+    verified = true,
+    "emailVerifiedAt" = NOW()
+WHERE email = 'usuario@mail.com.br';
+```
+
+## Smoke test
+
+1. Criar usuario.
+2. Verificar e-mail ou marcar como verificado no banco.
+3. Fazer login.
+4. Criar reserva.
+5. Tentar criar reserva no mesmo horario.
+6. Acessar `/users` com admin.
+7. Ativar/inativar usuario.
+8. Testar reset de senha.

@@ -1,38 +1,96 @@
-# Runbook de manutenção (o que fazer nas férias)
+# Runbook de manutencao
 
-## Incidentes comuns
+## Usuarios nao conseguem logar
 
-### 1) Usuários sem receber e-mail
+Verificar no banco:
 
-Verificar, na ordem:
+- `active = true`
+- `emailVerifiedAt` preenchido
+- `verified = true`
+- `role` correto
 
-1. Variáveis `RESEND_API_KEY` e `EMAIL_FROM` no ambiente.
-2. Domínio verificado no Resend.
-3. Logs do servidor ao criar agendamento (erros de envio em `lib/mail.ts`).
-4. Se o problema for apenas lembrete, checar cron (ver `docs/06-jobs-e-cron.md`).
+Verificar ambiente:
 
-### 2) Conflitos de agendamento aparecendo
+- `JWT_SECRET` configurado.
+- app reiniciado apos trocar variaveis.
 
-1. Confirmar que a validação de overlap está rodando no endpoint de criação.
-2. Verificar timezone/formato: `Booking.date` é `YYYY-MM-DD` e horas são `HH:MM`.
-3. Consultar no banco se existem duplicidades.
+## Usuario nao consegue agendar
 
-### 3) Job de lembretes não dispara
+Verificar:
 
-1. Verificar se o cron está ativo.
-2. Chamar manualmente `GET /api/jobs/remidenrs`.
-3. Verificar se existem bookings com `reminderSent=false` próximos.
+1. Usuario ativo e verificado.
+2. Sala existe em `lib/rooms.ts`.
+3. Horario entre `06:00` e `17:30`.
+4. Horario em passos de 30 minutos.
+5. Sem conflito na mesma sala e data.
+6. Nao e feriado nacional.
+7. Logs de `/api/bookings`.
 
-## Operações de rotina
+Erro conhecido:
 
-- Rotação de segredos (se necessário)
-- Aplicar migrations (somente via `prisma migrate deploy`)
-- Backups e restauração (procedimento no Supabase)
+```text
+Failed to deserialize column of type 'void'
+```
 
-## Acesso
+Correcao:
 
-Manter um local seguro com:
+- usar `$executeRaw`, nao `$queryRaw`, com `pg_advisory_xact_lock`.
 
-- Acesso ao provedor de deploy
-- Acesso ao Supabase
-- Acesso ao Resend
+## E-mails nao chegam
+
+Verificar:
+
+- `RESEND_API_KEY`;
+- `EMAIL_FROM`;
+- dominio verificado;
+- logs do servidor;
+- painel do Resend.
+
+Erro:
+
+```text
+API key is invalid
+```
+
+Solucao:
+
+- gerar nova chave;
+- atualizar variavel;
+- reiniciar app.
+
+## Reset de senha
+
+Verificar:
+
+- token nao expirou;
+- token nao foi usado;
+- usuario ativo;
+- Resend funcionando;
+- `NEXT_PUBLIC_APP_URL` correto.
+
+Senha forte:
+
+- minimo 10 caracteres;
+- 1 letra maiuscula;
+- 1 numero;
+- 1 simbolo.
+
+## Job de lembrete
+
+Verificar:
+
+- cron ativo;
+- `CRON_SECRET`;
+- header correto;
+- reservas nos proximos 15 minutos;
+- `reminderSent = false`.
+
+## Importacao ICS
+
+Verificar:
+
+- usuario admin;
+- arquivo `.ics`;
+- arquivo ate 5 MB;
+- sala valida;
+- eventos com `start`, `end` e `uid`.
