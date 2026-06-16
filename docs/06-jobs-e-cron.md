@@ -14,8 +14,8 @@ A rota antiga `/api/jobs/remidenrs` existe por compatibilidade.
 ## O que o job faz
 
 1. Busca reservas:
-   - `status = confirmed`
-   - `reminderSent = false`
+  - `status = confirmed`
+  - `reminderSent = false`
 2. Filtra reservas que comecam nos proximos 15 minutos.
 3. Marca `reminderSent = true`.
 4. Envia e-mail.
