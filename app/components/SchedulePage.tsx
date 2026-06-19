@@ -16,11 +16,14 @@ import {
   CalendarPlus,
   ChevronLeft,
   ChevronRight,
+  MessageSquare,
   RotateCcw,
+  UserMinus,
+  Users,
 } from "lucide-react";
 
 import type { Booking } from "@/lib/types/booking";
-import { ROOMS } from "@/lib/rooms";
+import { PERSONAL_ROOM_ID, ROOMS } from "@/lib/rooms";
 import ImportPage from "@/app/import/page";
 
 import { BookingForm } from "./BookingForm";
@@ -33,11 +36,15 @@ import { CalendarDayIcon } from "./CalendarIcon";
 import { ViewToggle, type ViewMode } from "./ViewToggle";
 import { TimeGrid } from "./TimeGrid";
 import { AppSidebar } from "./AppSidebar";
+import { ManageGuestsDialog } from "./ManageGuestsDialog";
+import { BookingRequestDialog } from "./BookingRequestDialog";
+import { NotificationBell } from "./NotificationBell";
 
 import { Card } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Calendar } from "@/app/components/ui/calendar";
 import { Input } from "@/app/components/ui/input";
+import { SidebarTrigger } from "@/app/components/ui/sidebar";
 import Delete from "./Delete";
 import { toISODateOnly } from "@/lib/time";
 import {
@@ -64,13 +71,11 @@ const fetcher = async (url: string) => {
   return j;
 };
 
-const DEFAULT_ROOM_ID = MY_AGENDA_ID;
-
 export function SchedulePage() {
   const searchParams = useSearchParams();
 
   const [view, setView] = useState<ViewMode>("month");
-  const [roomId, setRoomId] = useState<string | undefined>(DEFAULT_ROOM_ID);
+  const [roomId, setRoomId] = useState<string | undefined>(undefined);
 
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
@@ -85,11 +90,15 @@ export function SchedulePage() {
   const [newEndTime, setNewEndTime] = useState("");
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [savingDetails, setSavingDetails] = useState(false);
+  const [manageGuestsOpen, setManageGuestsOpen] = useState(false);
+  const [requestType, setRequestType] = useState<"reschedule" | "decline" | null>(null);
+  const [actionBooking, setActionBooking] = useState<Booking | null>(null);
 
   // CHAVE de recarga REAL para a BookingsList (não usar 0 fixo)
   const [reloadKey, setReloadKey] = useState(0);
 
   const isMyAgenda = roomId === MY_AGENDA_ID;
+  const visibleRooms = useMemo(() => ROOMS.filter((room) => room.id !== PERSONAL_ROOM_ID), []);
 
   // Título dinâmico por sala
   const roomTitle = useMemo(() => {
@@ -160,7 +169,6 @@ export function SchedulePage() {
     if (!isRefreshingData) setRoomSwitching(false);
   }, [roomSwitching, isRefreshingData]);
 
-
   const { data: me } = useSWR<{
     authenticated: boolean;
     user: { email: string; name: string | null; id: string | null; role?: string } | null;
@@ -176,6 +184,9 @@ export function SchedulePage() {
     setBookingPanelOpen(false);
     setDetailsBooking(null);
     setRescheduleOpen(false);
+    setManageGuestsOpen(false);
+    setRequestType(null);
+    setActionBooking(null);
     setDetailsError(null);
     setRoomSwitching(true);
     setRoomId(nextRoomId);
@@ -188,6 +199,26 @@ export function SchedulePage() {
 
     setBookingPanelOpen(false);
     setDetailsBooking(null);
+  }
+
+  async function refreshBookingData() {
+    await globalMutate((key) => typeof key === "string" && key.startsWith("/api/bookings"));
+    await Promise.all([mutateBookings(), mutateHolidays()]);
+    setReloadKey((k) => k + 1);
+  }
+
+  async function handleGuestsUpdated(updated: Booking) {
+    setActionBooking(updated);
+    await refreshBookingData();
+  }
+
+  async function handleRequestCreated() {
+    setRequestType(null);
+    setActionBooking(null);
+    await Promise.all([
+      globalMutate((key) => typeof key === "string" && key.startsWith("/api/notifications")),
+      globalMutate((key) => typeof key === "string" && key.startsWith("/api/booking-requests")),
+    ]);
   }
 
   const dayNumber = new Date().getDate();
@@ -351,7 +382,7 @@ export function SchedulePage() {
   return (
     <main className="min-h-screen bg-background">
       <Button
-        className="w-12 h-12 cursor-pointer lg:hidden flex fixed bottom-0 right-0 z-20 rounded-full m-4 items-center justify-center shadow-lg"
+        className="w-12 h-12 cursor-pointer lg:hidden flex fixed bottom-4 right-4 z-20 rounded-full items-center justify-center shadow-lg"
         onClick={() => {
           setBookingPanelOpen(true);
           setDetailsBooking(null);
@@ -361,8 +392,8 @@ export function SchedulePage() {
         <CalendarPlus className="h-4 w-4" />
       </Button>
 
-      <div className="py-4 px-4">
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[280px_minmax(0,1fr)_280px]">
+      <div className="px-2 py-0 lg:px-4 lg:py-4">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[280px_minmax(0,1fr)_280px]">
           {/* COLUNA ESQUERDA */}
           <div className="">
             <AppSidebar roomId={roomId} onRoomChange={handleRoomChange} />
@@ -407,12 +438,14 @@ export function SchedulePage() {
           </div>
 
           {/* COLUNA CENTRAL */}
-          <Card className="flex flex-col pb-0 pt-4 relative">
-            <div className="flex flex-wrap items-center justify-between mx-4 p-0">
-              <div className="flex flex-col  xl:flex-row items-center gap-2 justify-between w-full">
-                <div className="flex items-center gap-3 self-center">
+          <Card className="relative flex min-w-0 flex-col pb-0 pt-4">
+            <div className="mx-4 p-0">
+              <div className="relative flex w-full flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <SidebarTrigger className="absolute left-0 top-0 h-9 w-9 xl:hidden" />
+
+                <div className="flex min-w-0 flex-wrap items-center justify-center gap-3 pl-10 xl:justify-start xl:pl-0">
                   <CalendarDayIcon day={dayNumber} />
-                  <h1 className="text-xl md:text-2xl lg:text-3xl xl:text-2xl 2xl:text-4xl font-bold tracking-tight">
+                  <h1 className="min-w-0 truncate text-xl font-bold tracking-tight md:text-2xl lg:text-3xl xl:text-2xl 2xl:text-4xl">
                     {roomTitle}
                   </h1>
 
@@ -426,44 +459,75 @@ export function SchedulePage() {
                   </Button>
                 </div>
 
-                <div className="flex items-center lg:gap-3">
-                  <ChevronLeft
-                    onClick={goPrev}
-                    className="h-4 w-4 xl:h-6 xl:w-6 cursor-pointer"
-                  />
+                <div className="flex flex-col items-center gap-2 sm:flex-row xl:justify-end">
+                  <div className="flex items-center gap-3">
+                    <ChevronLeft
+                      onClick={goPrev}
+                      className="h-4 w-4 cursor-pointer xl:h-6 xl:w-6"
+                    />
 
-                  <span className="font-semibold text-xs md:text-[16px] 2xl:text-lg">
-                    {format(currentMonth, "MMMM 'de' yyyy", {
-                      locale: ptBR,
-                    }).replace(/^./, (c) => c.toUpperCase())}
-                  </span>
+                    <span className="min-w-[132px] text-center text-xs font-semibold md:text-[16px] 2xl:text-lg">
+                      {format(currentMonth, "MMMM 'de' yyyy", {
+                        locale: ptBR,
+                      }).replace(/^./, (c) => c.toUpperCase())}
+                    </span>
+
+                    <ChevronRight
+                      onClick={goNext}
+                      className="h-4 w-4 cursor-pointer xl:h-6 xl:w-6"
+                    />
+                  </div>
 
                   {isRefreshingData && (
                     <span className="text-xs text-muted-foreground sr-only">Atualizando reservas…</span>
                   )}
 
-                  <ViewToggle value={view} onChange={setView} />
-
-                  <ChevronRight
-                    onClick={goNext}
-                    className="h-4 w-4 xl:h-6 xl:w-6 cursor-pointer"
-                  />
+                  <div className="flex items-center gap-2 rounded-md border bg-muted/30 p-1 shadow-sm">
+                    <ViewToggle value={view} onChange={setView} />
+                    <div className="h-6 w-px bg-border" />
+                    <NotificationBell />
+                  </div>
                 </div>
               </div>
             </div>
 
             {roomSwitching && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 backdrop-blur-[1px]">
-                <div className="rounded-md border bg-white px-3 py-2 text-sm text-muted-foreground shadow-sm">
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-[1px]">
+                <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground shadow-sm">
                   Carregando dados da sala…
                 </div>
               </div>
             )}
 
             {!roomId ? (
-              <div className="py-10 text-center text-sm text-muted-foreground">
-                Selecione uma sala na coluna esquerda para visualizar o
-                calendário.
+              <div className="flex min-h-[520px] flex-col items-center justify-center gap-5 px-4 py-10 text-center">
+                <div>
+                  <h2 className="text-xl font-semibold">Selecione uma sala</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Escolha a sala inicial para carregar o calendario. Depois disso, use a barra lateral para trocar.
+                  </p>
+                </div>
+                <div className="grid w-full max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2">
+                  {visibleRooms.map((room) => (
+                    <Button
+                      key={room.id}
+                      type="button"
+                      variant="outline"
+                      className="h-auto justify-start py-3 text-left"
+                      onClick={() => handleRoomChange(room.id)}
+                    >
+                      {room.name}
+                    </Button>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="h-auto justify-start py-3 text-left"
+                    onClick={() => handleRoomChange(MY_AGENDA_ID)}
+                  >
+                    Agenda Pessoal
+                  </Button>
+                </div>
               </div>
             ) : view === "month" ? (
               <MonthGrid
@@ -514,9 +578,9 @@ export function SchedulePage() {
           </Card>
 
           {/* COLUNA DIREITA */}
-          <Card className="py-4 pl-4 pr-1 tracking-tight flex flex-col gap-3 bg-secondary-foreground/90">
+          <Card className="flex min-w-0 flex-col gap-3 py-4 pl-4 pr-1 tracking-tight">
             <div className="flex items-center justify-center">
-              <h2 className="font-semibold text-xl text-white">
+              <h2 className="font-semibold text-xl text-foreground">
                 Horários Agendados
               </h2>
             </div>
@@ -608,6 +672,13 @@ export function SchedulePage() {
                     : "Local"}
               </p>
 
+              {detailsBooking.longReason && (
+                <div className="rounded-md border bg-muted/50 p-2">
+                  <p className="font-semibold">Justificativa:</p>
+                  <p className="mt-1 text-muted-foreground">{detailsBooking.longReason}</p>
+                </div>
+              )}
+
               {(() => {
                 const normalize = (v?: string | null) =>
                   (v ?? "").trim().toLowerCase();
@@ -636,23 +707,23 @@ export function SchedulePage() {
 
                 return (
                   <div className="flex flex-col gap-1 pt-2">
-                    <span className="font-semibold text-gray-900">
+                    <span className="font-semibold text-foreground">
                       Participantes:
                     </span>
 
                     {participantsArray.length > 0 ? (
-                      <div className="flex flex-col pl-2 border-l-2 border-blue-100 ml-1">
+                      <div className="flex flex-col pl-2 border-l-2 border-border ml-1">
                         {participantsArray.map((email, index) => (
                           <span
                             key={index}
-                            className="text-sm text-gray-600 py-0.5"
+                            className="text-sm text-muted-foreground py-0.5"
                           >
                             {email}
                           </span>
                         ))}
                       </div>
                     ) : (
-                      <span className="text-sm italic text-gray-500 pl-2">
+                      <span className="text-sm italic text-muted-foreground pl-2">
                         Nenhum participante listado
                       </span>
                     )}
@@ -662,7 +733,21 @@ export function SchedulePage() {
 
               {/* Botões no DETALHE (apenas para o dono) */}
               {detailsIsOwner && (
-                <div className="flex gap-2 pt-3">
+                <div className="flex flex-wrap gap-2 pt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setActionBooking(detailsBooking);
+                      setDetailsBooking(null);
+                      setManageGuestsOpen(true);
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    Editar
+                  </Button>
+
                   <Button
                     type="button"
                     variant="secondary"
@@ -684,12 +769,64 @@ export function SchedulePage() {
                 </div>
               )}
 
+              {!detailsIsOwner && detailsBooking.isParticipant && (
+                <div className="flex flex-wrap gap-2 pt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setActionBooking(detailsBooking);
+                      setDetailsBooking(null);
+                      setRequestType("reschedule");
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    Solicitar remarcacao
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setActionBooking(detailsBooking);
+                      setDetailsBooking(null);
+                      setRequestType("decline");
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <UserMinus className="h-4 w-4 mr-2" />
+                    Nao vou comparecer
+                  </Button>
+                </div>
+              )}
+
               {detailsError && (
                 <p className="text-xs text-red-500 pt-2">{detailsError}</p>
               )}
             </div>
           )}
         </DraggablePanel>
+
+        <ManageGuestsDialog
+          open={manageGuestsOpen}
+          booking={actionBooking}
+          onOpenChange={(open) => {
+            setManageGuestsOpen(open);
+            if (!open) setActionBooking(null);
+          }}
+          onUpdated={handleGuestsUpdated}
+        />
+
+        <BookingRequestDialog
+          open={!!requestType}
+          type={requestType ?? "reschedule"}
+          booking={actionBooking}
+          onOpenChange={(open) => {
+            if (!open) setRequestType(null);
+            if (!open) setActionBooking(null);
+          }}
+          onCreated={handleRequestCreated}
+        />
 
         {/* Modal REAGENDAR (aberto a partir do detalhe) */}
         <Dialog open={rescheduleOpen} onOpenChange={setRescheduleOpen}>

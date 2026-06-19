@@ -6,6 +6,7 @@
     "dev": "next dev --webpack",
     "start": "next start",
     "lint": "eslint",
+    "docs:check": "node scripts/check-docs-updated.mjs",
     "prebuild": "prisma generate",
     "build": "next build"
   },

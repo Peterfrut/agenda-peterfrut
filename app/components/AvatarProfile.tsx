@@ -72,7 +72,7 @@ export function AvatarProfile() {
     <div className="flex items-center lg:gap-2 w-full">
       <div className="w-full flex gap-1 lg:gap-2 items-center">
         <Avatar className="w-10 h-10 lg:w-12 lg:h-12 cursor-pointer flex items-center justify-center">
-          <AvatarFallback className="bg-secondary-foreground text-muted font-bold text-xs md:text-2xl flex items-center justify-center">
+          <AvatarFallback className="bg-primary text-primary-foreground font-bold text-xs md:text-2xl flex items-center justify-center">
             {initial}
           </AvatarFallback>
         </Avatar>

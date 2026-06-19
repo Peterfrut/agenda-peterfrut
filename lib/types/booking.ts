@@ -5,6 +5,7 @@ export type Booking = {
   userName: string;
   userEmail: string;
   participantsEmails: string | null;
+  longReason?: string | null;
   title: string;
   date: string;
   startTime: string;

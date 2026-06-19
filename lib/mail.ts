@@ -479,3 +479,71 @@ export async function sendBookingEmail(kind: MailKind, booking: BookingLike) {
     }
   }
 }
+
+export async function sendBookingParticipantEmail(
+  kind: Extract<MailKind, "created" | "updated" | "canceled">,
+  booking: BookingLike,
+  toEmail: string
+) {
+  const email = normalizeEmail(toEmail);
+  if (!email) return;
+
+  const from = getFromEmail();
+  const base = getBaseUrl();
+  const logoUrl = new URL("/logo_peterfrut.png", base).toString();
+  const teamsUrl = (TEAMS_BY_ROOM_ID[booking.roomId] || "").trim();
+  const qrPath = QR_PNG_BY_ROOM_ID[booking.roomId];
+  const qrUrl = qrPath ? new URL(qrPath, base).toString() : undefined;
+  const logoCid = "logo-image";
+  const qrCid = "qr-image";
+  const logoBase64 = readPublicFileAsBase64("/logo_peterfrut.png");
+  const qrBase64 = qrPath ? readPublicFileAsBase64(qrPath) : null;
+
+  const attachments: Array<{
+    content?: string;
+    filename: string;
+    contentId?: string;
+    contentType?: string;
+    path?: string;
+  }> = [];
+
+  if (logoBase64) {
+    attachments.push({
+      content: logoBase64,
+      filename: "logo_peterfrut.png",
+      contentId: logoCid,
+      contentType: "image/png",
+    });
+  }
+
+  if (qrBase64 && qrPath) {
+    attachments.push({
+      content: qrBase64,
+      filename: path.basename(qrPath),
+      contentId: qrCid,
+      contentType: "image/png",
+    });
+  }
+
+  const subject = buildSubject(kind, booking, "participant");
+  const html = await buildHtml(kind, booking, "participant", email, {
+    logoCid: logoBase64 ? logoCid : undefined,
+    qrCid: qrBase64 ? qrCid : undefined,
+    logoUrl: logoBase64 ? undefined : logoUrl,
+    qrUrl: qrBase64 ? undefined : qrUrl,
+    teamsUrl,
+  });
+
+  const result = await resend.emails.send({
+    from,
+    to: [email],
+    subject,
+    html,
+    attachments: attachments.length ? attachments : undefined,
+  });
+
+  if (result.error) {
+    console.error("[RESEND] participant send error:", result.error);
+    throw new Error("Falha ao enviar e-mail.");
+  }
+}

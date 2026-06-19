@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
       name: user.name,
       role: user.role,
       active: user.active,
+      lastSeenReleaseAt: user.lastSeenReleaseAt,
     },
   });
 }

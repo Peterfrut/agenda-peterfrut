@@ -21,6 +21,7 @@ model Booking {
   userName          String
   userEmail         String
   participantsEmails String?
+  longReason        String?
 
   status            String   @default("confirmed")
   reminderSent      Boolean  @default(false)
@@ -32,6 +33,8 @@ model Booking {
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  changeRequests    BookingChangeRequest[]
 
   @@index([roomId, date])
   @@unique([provider, roomId, externalId])
@@ -48,9 +51,49 @@ model User {
   updatedAt DateTime @updatedAt
   emailVerifiedAt DateTime?
   role      String   @default("user") // user | admin
+  lastSeenReleaseAt DateTime?
 
   emailVerificationTokens EmailVerificationToken[]
   passwordResetTokens PasswordResetToken[]
+  bookingChangeRequests BookingChangeRequest[]
+  notifications Notification[]
+}
+
+model BookingChangeRequest {
+  id             String   @id @default(cuid())
+  bookingId      String
+  booking        Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  requesterId    String
+  requester      User     @relation(fields: [requesterId], references: [id], onDelete: Cascade)
+  requesterEmail String
+  type           String
+  requestedDate  String?
+  requestedStartTime String?
+  requestedEndTime String?
+  description    String
+  status         String   @default("pending")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  resolvedAt     DateTime?
+
+  @@index([bookingId])
+  @@index([requesterId, createdAt])
+  @@index([requesterEmail, createdAt])
+  @@index([status, createdAt])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  message   String
+  href      String?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, readAt, createdAt])
 }
 
 model PasswordResetToken {

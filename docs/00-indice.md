@@ -16,6 +16,7 @@ O objetivo do projeto e centralizar as reservas de salas, agenda pessoal, usuari
 8. [Runbook de manutencao](./08-runbook-manutencao.md)
 9. [Troubleshooting](./09-troubleshooting.md)
 10. [Seguranca e permissoes](./10-seguranca-e-permissoes.md)
+11. [Fluxo de documentacao](./11-fluxo-de-documentacao.md)
 
 ## Stack
 
@@ -44,3 +45,4 @@ O objetivo do projeto e centralizar as reservas de salas, agenda pessoal, usuari
 - Toda alteracao de banco deve ter migration.
 - Depois de alterar Prisma, rodar `npx prisma generate`.
 - Antes de publicar, rodar `npm run lint` e `npm run build`.
+- Para nao esquecer docs em mudancas de codigo, rodar `npm run docs:check`.

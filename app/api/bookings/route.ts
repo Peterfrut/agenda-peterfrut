@@ -1,5 +1,5 @@
 // app/api/bookings/route.ts
-import { sendBookingEmail, type BookingLike } from "@/lib/mail";
+import { sendBookingEmail, sendBookingParticipantEmail, type BookingLike } from "@/lib/mail";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { intervalsOverlap, isWithinWorkingHours } from "@/lib/time";
@@ -9,6 +9,7 @@ import type { Booking as PrismaBooking, Prisma } from "@prisma/client";
 import { requireUser, type SessionUser } from "@/lib/api-auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { retryAfterResponse } from "@/lib/security";
+import { createNotificationForEmail } from "@/lib/notifications";
 
 import { addDays, addMonths, addWeeks, format, getDay, parseISO } from "date-fns";
 import { isStep30Minutes, isValidEmail, normEmail, splitEmails } from "@/lib/formatters";
@@ -34,6 +35,8 @@ type RecurrenceInput = {
 };
 
 const MAX_OCCURRENCES = 180;
+const LONG_BOOKING_MINUTES = 180;
+const HIGH_RECURRENCE_OCCURRENCES = 20;
 
 function expandRecurrenceDates(startDateISO: string, r?: RecurrenceInput): string[] {
   if (!r || r.mode === "none") return [startDateISO];
@@ -139,6 +142,7 @@ const bookingSchema = z
     startTime: z.string().regex(/^\d{2}:\d{2}$/),
     endTime: z.string().regex(/^\d{2}:\d{2}$/),
     title: z.string().trim().min(1).max(120),
+    longReason: z.string().trim().max(600).optional().nullable(),
 
     recurrence: z
       .object({
@@ -213,6 +217,35 @@ const updateSchema = z
     }
   });
 
+const participantsUpdateSchema = z
+  .object({
+    id: z.string(),
+    title: z.string().trim().min(1).max(120).optional(),
+    longReason: z.string().trim().max(600).optional().nullable(),
+    participantsEmails: z.string().max(2000).optional().nullable(),
+  })
+  .superRefine((val, ctx) => {
+    if (!val.participantsEmails) return;
+
+    const emails = splitEmails(val.participantsEmails);
+    if (emails.length > 50) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Limite de 50 participantes por reserva.",
+        path: ["participantsEmails"],
+      });
+    }
+
+    const invalid = emails.filter((e) => !isValidEmail(e));
+    if (invalid.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `E-mail(s) invalido(s): ${invalid.join(", ")}`,
+        path: ["participantsEmails"],
+      });
+    }
+  });
+
 const deleteSchema = z.object({ id: z.string() });
 
 const MY_AGENDA_ID = "__my__";
@@ -234,6 +267,21 @@ function isParticipant(booking: Pick<PrismaBooking, "participantsEmails">, email
   return participantList(booking.participantsEmails).includes(normEmail(email));
 }
 
+function bookingInvolvesEmail(
+  booking: Pick<PrismaBooking, "userEmail" | "participantsEmails">,
+  email: string
+) {
+  const emailNorm = normEmail(email);
+  return normEmail(booking.userEmail) === emailNorm || isParticipant(booking, emailNorm);
+}
+
+function bookingDurationMinutes(startTime: string, endTime: string) {
+  const [sh, sm] = startTime.split(":").map(Number);
+  const [eh, em] = endTime.split(":").map(Number);
+  if (![sh, sm, eh, em].every(Number.isFinite)) return 0;
+  return eh * 60 + em - (sh * 60 + sm);
+}
+
 function toBookingDto(booking: PrismaBooking, user: SessionUser) {
   const isOwner = normEmail(booking.userEmail) === user.email;
   const participant = isParticipant(booking, user.email);
@@ -251,6 +299,7 @@ function toBookingDto(booking: PrismaBooking, user: SessionUser) {
     userName: booking.userName,
     userEmail: canManage ? booking.userEmail : "",
     participantsEmails: canViewParticipants ? booking.participantsEmails : null,
+    longReason: canViewParticipants ? booking.longReason : null,
     status: booking.status,
     provider: booking.provider,
     externalSource: user.role === "admin" ? booking.externalSource : null,
@@ -272,9 +321,54 @@ async function sendBookingEmailSafely(kind: "created" | "updated" | "canceled" |
   }
 }
 
+async function sendParticipantEmailSafely(
+  kind: "created" | "updated" | "canceled",
+  booking: BookingLike,
+  email: string
+) {
+  try {
+    await sendBookingParticipantEmail(kind, booking, email);
+  } catch (err) {
+    console.error(`[BOOKING MAIL] Falha ao enviar e-mail de ${kind} para ${email}.`, err);
+  }
+}
+
 async function lockBookingDay(tx: Prisma.TransactionClient, roomId: string, date: string, email?: string) {
   const scope = email ? `${roomId}:${date}:${email}` : `${roomId}:${date}`;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${scope}))`;
+}
+
+async function assertUserHasNoOverlappingBooking(
+  tx: Prisma.TransactionClient,
+  params: {
+    email: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    excludeBookingId?: string;
+  }
+) {
+  const emailNorm = normEmail(params.email);
+  const candidates = await tx.booking.findMany({
+    where: {
+      date: params.date,
+      ...(params.excludeBookingId ? { NOT: { id: params.excludeBookingId } } : {}),
+      OR: [{ userEmail: emailNorm }, { participantsEmails: { contains: emailNorm } }],
+    },
+  });
+
+  const conflict = candidates.find(
+    (booking) =>
+      bookingInvolvesEmail(booking, emailNorm) &&
+      intervalsOverlap(params.startTime, params.endTime, booking.startTime, booking.endTime)
+  );
+
+  if (conflict) {
+    throw new BookingApiError(
+      `Voce ja possui compromisso em ${params.date} das ${conflict.startTime} as ${conflict.endTime}.`,
+      409
+    );
+  }
 }
 
 // -------------------- GET -------------------- //
@@ -419,10 +513,32 @@ export async function POST(req: NextRequest) {
     }
 
     // cria tudo em transação com trava por sala/dia para evitar corrida
+    const requiresLongReason =
+      bookingDurationMinutes(data.startTime, data.endTime) > LONG_BOOKING_MINUTES ||
+      dates.length > HIGH_RECURRENCE_OCCURRENCES;
+    const longReason = data.longReason?.trim() || null;
+
+    if (requiresLongReason && !longReason) {
+      return NextResponse.json(
+        {
+          error:
+            "Informe uma justificativa para reservas com mais de 3 horas ou recorrencia acima de 20 ocorrencias.",
+        },
+        { status: 400 }
+      );
+    }
+
     const created = await prisma.$transaction(async (tx) => {
       const rows: PrismaBooking[] = [];
       for (const d of dates) {
         await lockBookingDay(tx, data.roomId, d, isPersonalAgenda ? loggedEmailNorm : undefined);
+        await lockBookingDay(tx, "user-calendar", d, loggedEmailNorm);
+        await assertUserHasNoOverlappingBooking(tx, {
+          email: loggedEmailNorm,
+          date: d,
+          startTime: data.startTime,
+          endTime: data.endTime,
+        });
 
         const sameDay = await tx.booking.findMany({
           where: isPersonalAgenda
@@ -449,6 +565,7 @@ export async function POST(req: NextRequest) {
             startTime: data.startTime,
             endTime: data.endTime,
             title: data.title,
+            longReason,
           },
         });
         rows.push(booking);
@@ -490,6 +607,72 @@ export async function PATCH(req: NextRequest) {
     }
 
     const json = await req.json();
+
+    if (
+      Object.prototype.hasOwnProperty.call(json, "participantsEmails") ||
+      Object.prototype.hasOwnProperty.call(json, "title") ||
+      Object.prototype.hasOwnProperty.call(json, "longReason")
+    ) {
+      const data = participantsUpdateSchema.parse(json);
+      const booking = await prisma.booking.findUnique({ where: { id: data.id } });
+      if (!booking) return NextResponse.json({ error: "Reserva nÃ£o encontrada." }, { status: 404 });
+
+      if (!isAdmin && normEmail(booking.userEmail) !== loggedEmailNorm) {
+        return NextResponse.json(
+          { error: "Voce nao pode editar convidados de uma reserva de outro usuario." },
+          { status: 403 }
+        );
+      }
+
+      const ownerEmail = normEmail(booking.userEmail);
+      const hasParticipantsInput = Object.prototype.hasOwnProperty.call(data, "participantsEmails");
+      const previousParticipants = participantList(booking.participantsEmails);
+      const nextParticipants = hasParticipantsInput
+        ? Array.from(new Set(splitEmails(data.participantsEmails ?? ""))).filter((email) => email !== ownerEmail)
+        : previousParticipants;
+      const nextParticipantsText = nextParticipants.length ? nextParticipants.join(",") : null;
+      const removed = previousParticipants.filter((email) => !nextParticipants.includes(email));
+      const added = nextParticipants.filter((email) => !previousParticipants.includes(email));
+      const titleChanged = typeof data.title === "string" && data.title.trim() !== booking.title;
+
+      const updated = await prisma.booking.update({
+        where: { id: booking.id },
+        data: {
+          participantsEmails: nextParticipantsText,
+          ...(typeof data.title === "string" ? { title: data.title.trim() } : {}),
+          ...(Object.prototype.hasOwnProperty.call(data, "longReason")
+            ? { longReason: data.longReason?.trim() || null }
+            : {}),
+        },
+      });
+
+      for (const email of removed) {
+        await sendParticipantEmailSafely("canceled", updated as BookingLike, email);
+        await createNotificationForEmail(email, {
+          type: "booking_guest_removed",
+          title: "Convite removido",
+          message: `Voce foi removido da reserva "${updated.title}" em ${updated.roomName}.`,
+          href: "/notifications",
+        });
+      }
+
+      for (const email of added) {
+        await sendParticipantEmailSafely("created", updated as BookingLike, email);
+        await createNotificationForEmail(email, {
+          type: "booking_guest_added",
+          title: "Novo convite",
+          message: `Voce foi adicionado na reserva "${updated.title}" em ${updated.roomName}.`,
+          href: "/notifications",
+        });
+      }
+
+      if (titleChanged) {
+        await sendBookingEmailSafely("updated", updated as BookingLike);
+      }
+
+      return NextResponse.json(toBookingDto(updated, auth.user));
+    }
+
     const data = updateSchema.parse(json);
 
     const booking = await prisma.booking.findUnique({ where: { id: data.id } });
@@ -533,6 +716,14 @@ export async function PATCH(req: NextRequest) {
 
     const updated = await prisma.$transaction(async (tx) => {
       await lockBookingDay(tx, booking.roomId, data.date, isPersonalAgenda ? normEmail(booking.userEmail) : undefined);
+      await lockBookingDay(tx, "user-calendar", data.date, normEmail(booking.userEmail));
+      await assertUserHasNoOverlappingBooking(tx, {
+        email: booking.userEmail,
+        date: data.date,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        excludeBookingId: booking.id,
+      });
 
       const sameDay = await tx.booking.findMany({
         where: isPersonalAgenda

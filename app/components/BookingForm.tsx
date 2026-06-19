@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { useSWRConfig } from "swr";
 import { toast } from "sonner";
@@ -18,7 +18,7 @@ import { isValidEmail, normEmail } from "@/lib/formatters";
 import { WORK_END_MIN, WORK_START_MIN } from "@/lib/rooms";
 import { MY_AGENDA_ID } from "./RoomList";
 
-import { Plus, Users } from "lucide-react";
+import { Plus, Search, Users } from "lucide-react";
 import type { Booking } from "@/lib/types/booking";
 
 type Props = {
@@ -29,11 +29,50 @@ type Props = {
 };
 
 const fetcher = (url: string) => fetch(url).then((res) => (res.ok ? res.json() : null));
+const LONG_BOOKING_MINUTES = 180;
+const HIGH_RECURRENCE_OCCURRENCES = 20;
+
+type UserSuggestion = {
+  id: string;
+  name: string;
+  email: string;
+};
 
 /** Converte lista de emails em string "a@a.com, b@b.com" para manter compatibilidade com API atual */
 function emailsToCommaString(list: string[]): string | null {
   const unique = Array.from(new Set(list.map(normEmail).filter(Boolean)));
   return unique.length ? unique.join(", ") : null;
+}
+
+function estimateOccurrences(
+  startISO: string,
+  mode: "none" | "daily" | "weekly" | "monthly" | "weeklyByDay",
+  untilISO: string,
+  weekDays: number[]
+) {
+  if (mode === "none") return 1;
+
+  const start = new Date(`${startISO}T00:00:00`);
+  const until = new Date(`${untilISO}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(until.getTime()) || until < start) return 1;
+
+  let count = 0;
+  const cur = new Date(start);
+
+  while (cur <= until && count <= HIGH_RECURRENCE_OCCURRENCES + 1) {
+    if (mode === "weeklyByDay") {
+      if (weekDays.includes(cur.getDay())) count += 1;
+      cur.setDate(cur.getDate() + 1);
+      continue;
+    }
+
+    count += 1;
+    if (mode === "daily") cur.setDate(cur.getDate() + 1);
+    if (mode === "weekly") cur.setDate(cur.getDate() + 7);
+    if (mode === "monthly") cur.setMonth(cur.getMonth() + 1);
+  }
+
+  return count;
 }
 
 export function BookingForm({ roomId, date, onDateChange, onCreated }: Props) {
@@ -89,6 +128,7 @@ export function BookingForm({ roomId, date, onDateChange, onCreated }: Props) {
   const [startTime, setStartTime] = useState("06:00");
   const [endTime, setEndTime] = useState("06:30");
   const [title, setTitle] = useState("");
+  const [longReason, setLongReason] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -97,6 +137,17 @@ export function BookingForm({ roomId, date, onDateChange, onCreated }: Props) {
     authenticated: boolean;
     user: { email: string; name: string | null; id: string | null } | null;
   }>("/api/auth/me", fetcher);
+
+  const suggestionsKey =
+    showParticipants && participantDraft.trim().length >= 2
+      ? `/api/users/search?q=${encodeURIComponent(participantDraft.trim())}`
+      : null;
+
+  const { data: suggestionsData } = useSWR<{ ok: boolean; users: UserSuggestion[] }>(
+    suggestionsKey,
+    fetcher,
+    { keepPreviousData: true }
+  );
 
   const [repeatMode, setRepeatMode] = useState<
     "none" | "daily" | "weekly" | "monthly" | "weeklyByDay"
@@ -127,11 +178,25 @@ export function BookingForm({ roomId, date, onDateChange, onCreated }: Props) {
     keepPreviousData: true,
   });
 
+  const myBookingsKey =
+    roomId && roomId !== MY_AGENDA_ID ? `/api/bookings?scope=my&date=${bookingDateISO}` : null;
+
+  const { data: myBookings = [] } = useSWR<Booking[]>(myBookingsKey, fetcher, {
+    keepPreviousData: true,
+  });
+
+  const blockingBookings = useMemo(() => {
+    const byId = new Map<string, Booking>();
+    for (const booking of dayBookings ?? []) byId.set(booking.id, booking);
+    for (const booking of myBookings ?? []) byId.set(booking.id, booking);
+    return Array.from(byId.values());
+  }, [dayBookings, myBookings]);
+
   function overlapsAny(start: string, end: string): boolean {
     const s = timeToMinutes(start);
     const e = timeToMinutes(end);
     if (s === null || e === null) return true;
-    return (dayBookings ?? []).some((b) => {
+    return blockingBookings.some((b) => {
       const bs = timeToMinutes(String(b?.startTime ?? ""));
       const be = timeToMinutes(String(b?.endTime ?? ""));
       if (bs === null || be === null) return false;
@@ -179,9 +244,28 @@ export function BookingForm({ roomId, date, onDateChange, onCreated }: Props) {
     const nextEnd =
       ends.includes(endTime) ? endTime : ends[0] ?? minutesToTime(timeToMinutes(nextStart)! + SLOT_STEP_MIN);
     if (nextEnd !== endTime) setEndTime(nextEnd);
-  }, [roomId, bookingDateISO, (dayBookings ?? []).length]);
+  }, [roomId, bookingDateISO, blockingBookings.length]);
 
   const disabled = loading || meLoading || !me?.user;
+  const durationMinutes = useMemo(() => {
+    const start = timeToMinutes(startTime);
+    const end = timeToMinutes(endTime);
+    if (start === null || end === null) return 0;
+    return end - start;
+  }, [startTime, endTime]);
+
+  const recurrenceCount = useMemo(
+    () => estimateOccurrences(bookingDateISO, repeatMode, repeatUntil, weekDays),
+    [bookingDateISO, repeatMode, repeatUntil, weekDays]
+  );
+
+  const requiresLongReason =
+    durationMinutes > LONG_BOOKING_MINUTES || recurrenceCount > HIGH_RECURRENCE_OCCURRENCES;
+
+  const filteredSuggestions = useMemo(() => {
+    const current = new Set([...participants, userEmail].map(normEmail));
+    return (suggestionsData?.users ?? []).filter((user) => !current.has(normEmail(user.email)));
+  }, [participants, suggestionsData?.users, userEmail]);
 
   function revalidateCalendar() {
     mutate((key) => typeof key === "string" && key.startsWith("/api/bookings"));
@@ -209,6 +293,7 @@ export function BookingForm({ roomId, date, onDateChange, onCreated }: Props) {
       startTime,
       endTime,
       title: title.trim(),
+      longReason: requiresLongReason ? longReason.trim() : null,
       recurrence,
     };
 
@@ -257,6 +342,11 @@ export function BookingForm({ roomId, date, onDateChange, onCreated }: Props) {
     }
 
     // Se o bloco está aberto e existe texto digitado, tenta adicionar antes de enviar
+    if (requiresLongReason && longReason.trim().length < 10) {
+      setFormError("Informe uma justificativa com pelo menos 10 caracteres.");
+      return;
+    }
+
     if (showParticipants && participantDraft.trim()) {
       const email = normEmail(participantDraft);
       if (!isValidEmail(email)) {
@@ -385,6 +475,26 @@ export function BookingForm({ roomId, date, onDateChange, onCreated }: Props) {
             </div>
 
             {participantsError && <p className="text-xs text-red-500">{participantsError}</p>}
+
+            {filteredSuggestions.length > 0 && (
+              <div className="max-h-44 overflow-auto rounded-md border bg-background p-1">
+                {filteredSuggestions.map((user) => (
+                  <button
+                    key={user.id}
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-muted"
+                    onClick={() => addParticipant(user.email)}
+                    disabled={disabled}
+                  >
+                    <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{user.name}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{user.email}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {participants.length > 0 ? (
               <div className="flex flex-wrap gap-2 pt-1">
@@ -522,6 +632,27 @@ export function BookingForm({ roomId, date, onDateChange, onCreated }: Props) {
           </div>
         )}
       </div>
+
+      {requiresLongReason && (
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Justificativa</label>
+          <textarea
+            value={longReason}
+            onChange={(e) => setLongReason(e.target.value)}
+            disabled={disabled}
+            maxLength={600}
+            className="min-h-24 w-full resize-y rounded-md border bg-background p-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            placeholder={
+              durationMinutes > LONG_BOOKING_MINUTES
+                ? "Explique a necessidade de reservar por mais de 3 horas."
+                : "Explique a necessidade dessa recorrencia."
+            }
+          />
+          <p className="text-xs text-muted-foreground">
+            Obrigatorio para reservas acima de 3 horas ou com mais de 20 ocorrencias.
+          </p>
+        </div>
+      )}
 
       {formError && (
         <Alert variant="destructive" className="bg-(#FEE2E2] border-[#FCA5A5] text-[#EF4444]">

@@ -10,6 +10,7 @@ export type SessionUser = {
   role: "user" | "admin";
   active: boolean;
   emailVerifiedAt: Date | null;
+  lastSeenReleaseAt: Date | null;
 };
 
 type AuthResult =
@@ -29,12 +30,28 @@ export async function getSessionUser(req: NextRequest): Promise<SessionUser | nu
   const user = userId
     ? await prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, email: true, name: true, role: true, active: true, emailVerifiedAt: true },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          active: true,
+          emailVerifiedAt: true,
+          lastSeenReleaseAt: true,
+        },
       })
     : email
       ? await prisma.user.findUnique({
           where: { email },
-          select: { id: true, email: true, name: true, role: true, active: true, emailVerifiedAt: true },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            active: true,
+            emailVerifiedAt: true,
+            lastSeenReleaseAt: true,
+          },
         })
       : null;
 
@@ -47,6 +64,7 @@ export async function getSessionUser(req: NextRequest): Promise<SessionUser | nu
     role: user.role === "admin" ? "admin" : "user",
     active: user.active,
     emailVerifiedAt: user.emailVerifiedAt,
+    lastSeenReleaseAt: user.lastSeenReleaseAt,
   };
 }
 

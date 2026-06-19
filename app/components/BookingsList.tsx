@@ -4,7 +4,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { RotateCcw } from "lucide-react";
+import { Pencil, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { MY_AGENDA_ID } from "./RoomList";
 import { Button } from "@/app/components/ui/button";
@@ -31,6 +31,7 @@ import { Input } from "@/app/components/ui/input";
 import type { Booking } from "@/lib/types/booking";
 import { toISODateOnly } from "@/lib/time";
 import Delete from "./Delete";
+import { ManageGuestsDialog } from "./ManageGuestsDialog";
 import { ScrollArea, ScrollBar } from "@/app/components/ui/scroll-area";
 import {
   Tooltip,
@@ -139,6 +140,7 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
   const isAdmin = me?.authenticated && me.user?.role === "admin";
 
   const [editing, setEditing] = useState<Booking | null>(null);
+  const [detailsEditing, setDetailsEditing] = useState<Booking | null>(null);
   const [newStartTime, setNewStartTime] = useState("");
   const [newEndTime, setNewEndTime] = useState("");
   const [newDate, setNewDate] = useState(""); // ✅ data nova (YYYY-MM-DD)
@@ -146,6 +148,11 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
   const [saving, setSaving] = useState(false);
 
   const list = bookings || [];
+
+  async function handleDetailsUpdated() {
+    await mutate();
+    onReload();
+  }
 
   function openEdit(b: Booking) {
     setEditing(b);
@@ -225,7 +232,7 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
 
   return (
     <div className="space-y-3">
-      <div className="text-base text-white">
+      <div className="text-base text-foreground">
         {format(date, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
       </div>
 
@@ -357,16 +364,16 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
 
                     return (
                       <div className="flex flex-col gap-1">
-                        <span className="font-semibold text-gray-900">
+                        <span className="font-semibold text-foreground">
                           Participantes:
                         </span>
 
                         {participantsArray.length > 0 ? (
-                          <div className="flex flex-col pl-2 border-l-2 border-blue-100 ml-1">
+                          <div className="ml-1 flex flex-col border-l-2 border-border pl-2">
                             {participantsArray.map((email, index) => (
                               <span
                                 key={index}
-                                className="text-sm text-gray-600 py-0.5"
+                                className="py-0.5 text-sm text-muted-foreground"
                               >
                                 {email}
                               </span>
@@ -380,10 +387,27 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
                       </div>
                     );
                   })()}
+
+                  {b.longReason && (
+                    <div className="mt-2 rounded-md border bg-muted/50 p-2 text-[13px]">
+                      <span className="font-semibold">Justificativa: </span>
+                      <span className="text-muted-foreground">{b.longReason}</span>
+                    </div>
+                  )}
                 </div>
 
                 {canManage && (
                   <div className="flex items-center justify-center w-full gap-1 shrink-0">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      title="Editar agendamento"
+                      onClick={() => setDetailsEditing(b)}
+                      className="cursor-pointer shrink-0"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+
                     <Button
                       size="icon"
                       variant="ghost"
@@ -477,6 +501,15 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ManageGuestsDialog
+        open={!!detailsEditing}
+        booking={detailsEditing}
+        onOpenChange={(open) => {
+          if (!open) setDetailsEditing(null);
+        }}
+        onUpdated={handleDetailsUpdated}
+      />
 
       {error && !editing && (
         <p className="text-xs text-red-500 text-center mt-2">{error}</p>

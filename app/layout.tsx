@@ -5,7 +5,7 @@ import { Toaster } from "@/app/components/ui/sonner"
 import { ThemeProvider } from "./components/ThemeProvider"
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Analytics } from "@vercel/analytics/next"
-import { SidebarProvider, SidebarTrigger } from "@/app/components/ui/sidebar"
+import { SidebarProvider } from "@/app/components/ui/sidebar"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,9 +44,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <SidebarProvider defaultOpen={false}>
             <div className="flex min-h-dvh w-full">
               <main className="flex-1 w-full">
-                <div className="lg:hidden p-2">
-                  <SidebarTrigger />
-                </div>
                 {children}
               </main>
             </div>

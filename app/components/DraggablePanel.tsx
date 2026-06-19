@@ -96,12 +96,15 @@ export function DraggablePanel({
   return (
     <div
       ref={panelRef}
-      className={cn("fixed z-40 w-[380px] rounded-lg border bg-card shadow-2xl", className)}
+      className={cn(
+        "fixed z-40 max-h-[calc(100vh-16px)] w-[min(380px,calc(100vw-16px))] overflow-hidden rounded-lg border bg-card shadow-2xl",
+        className
+      )}
       style={{ top: pos.y, left: pos.x }}
     >
       {/* header arrastável */}
       <div
-        className="flex items-center justify-between px-3 py-2 bg-secondary-foreground cursor-move rounded-t-lg text-white"
+        className="flex cursor-move items-center justify-between rounded-t-lg bg-primary px-3 py-2 text-primary-foreground"
         onMouseDown={(e) => {
           setDragging(true)
           setOffset({
@@ -113,14 +116,14 @@ export function DraggablePanel({
         <span className="text-[18px] font-semibold">{title}</span>
         <button
           type="button"
-          className="p-1 rounded hover:bg-zinc-200"
+          className="rounded p-1 hover:bg-primary-foreground/15"
           onClick={onClose}
         >
           <X className="w-4 h-4 cursor-pointer" />
         </button>
       </div>
 
-      <div className="p-3">{children}</div>
+      <div className="max-h-[calc(100vh-64px)] overflow-y-auto p-3">{children}</div>
     </div>
   )
 }
