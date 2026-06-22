@@ -39,6 +39,7 @@ import { AppSidebar } from "./AppSidebar";
 import { ManageGuestsDialog } from "./ManageGuestsDialog";
 import { BookingRequestDialog } from "./BookingRequestDialog";
 import { NotificationBell } from "./NotificationBell";
+import { revalidateNotifications } from "@/app/components/notifications-cache";
 
 import { Card } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
@@ -193,7 +194,7 @@ export function SchedulePage() {
   }
 
   async function refreshAllAndClosePanels() {
-    await Promise.all([mutateBookings(), mutateHolidays()]);
+    await Promise.all([mutateBookings(), mutateHolidays(), revalidateNotifications()]);
 
     setReloadKey((k) => k + 1);
 
@@ -203,7 +204,7 @@ export function SchedulePage() {
 
   async function refreshBookingData() {
     await globalMutate((key) => typeof key === "string" && key.startsWith("/api/bookings"));
-    await Promise.all([mutateBookings(), mutateHolidays()]);
+    await Promise.all([mutateBookings(), mutateHolidays(), revalidateNotifications()]);
     setReloadKey((k) => k + 1);
   }
 
@@ -217,6 +218,7 @@ export function SchedulePage() {
     setActionBooking(null);
     await Promise.all([
       globalMutate((key) => typeof key === "string" && key.startsWith("/api/notifications")),
+      revalidateNotifications(),
       globalMutate((key) => typeof key === "string" && key.startsWith("/api/booking-requests")),
     ]);
   }
@@ -441,7 +443,7 @@ export function SchedulePage() {
           <Card className="relative flex min-w-0 flex-col pb-0 pt-4">
             <div className="mx-4 p-0">
               <div className="relative flex w-full flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                <SidebarTrigger className="absolute left-0 top-0 h-9 w-9 xl:hidden" />
+                <SidebarTrigger className="absolute left-0 top-0 h-9 w-9 lg:hidden" />
 
                 <div className="flex min-w-0 flex-wrap items-center justify-center gap-3 pl-10 xl:justify-start xl:pl-0">
                   <CalendarDayIcon day={dayNumber} />

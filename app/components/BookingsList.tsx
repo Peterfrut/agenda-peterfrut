@@ -39,6 +39,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/app/components/ui/tooltip";
+import { revalidateNotifications } from "@/app/components/notifications-cache";
 
 type Props = {
   roomId: string;
@@ -151,6 +152,7 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
 
   async function handleDetailsUpdated() {
     await mutate();
+    await revalidateNotifications();
     onReload();
   }
 
@@ -188,6 +190,7 @@ export function BookingsList({ roomId, date, reloadKey, onReload }: Props) {
 
       // Revalida a lista imediatamente (evita UI desatualizada)
       await mutate();
+      await revalidateNotifications();
 
       // Mantém seu comportamento atual de recarregar o calendário
       onReload();

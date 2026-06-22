@@ -27,6 +27,15 @@ Arquivos principais:
 
 O frontend usa SWR para buscar dados e atualizar listas sem recarregar a pagina.
 
+### Atualizacao de notificacoes
+
+As notificacoes usam SWR em `app/components/notifications-cache.ts`.
+
+- o sino e a central revalidam `/api/notifications` a cada 10 segundos;
+- tambem revalidam ao voltar foco para a aba e ao reconectar;
+- acoes locais de reserva, edicao, exclusao, ausencia e remarcacao chamam revalidacao imediata;
+- nao ha WebSocket/SSE neste momento, entao notificacoes geradas por outro usuario podem levar ate 10 segundos para aparecer.
+
 ## Backend/API
 
 Rotas principais:
@@ -52,6 +61,8 @@ Rotas principais:
 - `lib/mail.ts`: e-mails de reserva.
 - `lib/password-reset-mail.ts`: e-mail de reset.
 - `lib/verify-email-mail.ts`: e-mail de verificacao.
+- `lib/notifications.ts`: criacao de notificacoes internas com link e metadados sanitizados.
+- `lib/safe-links.ts`: allowlist de links internos e Teams.
 - `lib/rooms.ts`: salas e expediente.
 - `lib/time.ts`: validacao de horario.
 - `lib/formatters.ts`: e-mail, senha e tokens.
@@ -96,6 +107,19 @@ Feriados globais ou por sala.
 
 - `roomId = null`: global.
 - `roomId = <sala>`: sala especifica.
+
+### `Notification`
+
+Notificacoes exibidas no sino e na central de notificacoes.
+
+- `type`: categoria do aviso.
+- `title`: titulo curto.
+- `message`: resumo exibido na lista.
+- `href`: link opcional. Links externos sao aceitos apenas para Teams pela allowlist.
+- `metadata`: JSON opcional com detalhes visuais, como sala, horario, responsavel, convidados e contexto de remarcacao.
+- `readAt`: preenchido quando o usuario marca como lida.
+
+Observacao: notificacoes antigas sem `metadata` podem receber detalhes por fallback em `/api/notifications` quando existir uma `BookingChangeRequest` correspondente e permitida para o usuario autenticado.
 
 ## Fluxo de reserva
 

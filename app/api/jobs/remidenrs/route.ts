@@ -1,9 +1,61 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { sendBookingEmail, type BookingLike } from "@/lib/mail";
+import {
+  getTeamsUrlForRoom,
+  sendBookingEmail,
+  type BookingLike,
+} from "@/lib/mail";
+import { createNotificationForEmail } from "@/lib/notifications";
+import { splitEmails } from "@/lib/formatters";
 
 function buildStartDateTime(booking: { date: string; startTime: string }) {
   return new Date(`${booking.date}T${booking.startTime}:00`);
+}
+
+function reminderHref(booking: BookingLike) {
+  return getTeamsUrlForRoom(booking.roomId) || null;
+}
+
+function reminderMetadata(booking: BookingLike) {
+  const title = booking.title?.trim() || "Agendamento";
+  const participants = splitEmails(booking.participantsEmails ?? "");
+  const details = [
+    { label: "Titulo", value: title },
+    { label: "Sala", value: booking.roomName },
+    { label: "Data", value: booking.date },
+    { label: "Horario da reuniao", value: `${booking.startTime} as ${booking.endTime}` },
+    { label: "Quem agendou", value: `${booking.userName} (${booking.userEmail})` },
+  ];
+
+  return {
+    description: "A reuniao comeca em breve.",
+    details,
+    participants,
+  };
+}
+
+async function notifyReminder(booking: BookingLike) {
+  const title = booking.title?.trim() || "Agendamento";
+  const href = reminderHref(booking);
+  const message = `"${title}" em ${booking.roomName} comeca em breve, hoje das ${booking.startTime} as ${booking.endTime}.`;
+
+  const recipients = Array.from(
+    new Set([booking.userEmail, ...splitEmails(booking.participantsEmails ?? "")])
+  );
+
+  for (const email of recipients) {
+    try {
+      await createNotificationForEmail(email, {
+        type: "booking_reminder",
+        title: "Lembrete de agendamento",
+        message,
+        href,
+        metadata: reminderMetadata(booking),
+      });
+    } catch (err) {
+      console.error("[REMINDER JOB] Falha ao criar notificacao para", email, err);
+    }
+  }
 }
 
 function isAuthorizedCron(req: NextRequest) {
@@ -47,6 +99,7 @@ async function runReminderJob(req: NextRequest) {
       if (claimed.count === 0) continue;
 
       await sendBookingEmail("reminder", b as BookingLike);
+      await notifyReminder(b as BookingLike);
       reminded++;
     } catch (err) {
       console.error("[REMINDER JOB] Falha ao enviar lembrete para", b.id, err);

@@ -23,6 +23,15 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "Busca de usuarios cadastrados ao adicionar convidados, mantendo suporte a e-mails externos.",
       "Sugestoes de remarcacao para convidados e ausencia registrada sem aprovacao.",
       "Central de notificacoes e pagina de atualizacoes do sistema.",
+      "Atualizacoes com topicos navegaveis e exemplos visuais por novidade.",
+      "Ajuda visual com topicos expansivos e exemplos de uso por funcionalidade.",
+      "Pagina de notificacoes mais visual com badges por status.",
+      "Detalhes por notificacao com sala, horario, responsavel, participantes e contexto da solicitacao.",
+      "Detalhes de notificacao abrindo direto no sino da agenda, sem sair do calendario.",
+      "Notificacoes atualizam automaticamente sem recarregar a pagina.",
+      "Notificacoes internas para confirmacao, convite, remarcacao, cancelamento e lembrete de reuniao.",
+      "Notificacoes de agendamento com botao para abrir Teams quando a sala tiver link configurado.",
+      "Menu lateral em telas compactas fecha ao clicar fora ou escolher uma sala.",
       "Tela inicial direcionada para selecao de sala e ajustes para uso mobile.",
     ],
     examples: [
@@ -73,11 +82,11 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       },
       {
         title: "Usar notificacoes",
-        description: "O sino mostra ate 10 notificacoes recentes sem bloquear a tela.",
+        description: "O sino mostra ate 10 notificacoes recentes sem bloquear a tela e atualiza sozinho.",
         steps: [
           "Clique no sino ao lado dos botoes Dia, Semana e Mes no cabecalho do calendario.",
-          "Clique em uma notificacao para marcar como lida.",
-          "Use Ver detalhes para abrir a pagina completa de notificacoes.",
+          "Aguarde alguns segundos para novas notificacoes aparecerem sem recarregar a pagina.",
+          "Use Ver detalhes para abrir a ficha da notificacao ou Ver central para abrir a pagina completa.",
         ],
       },
       {
@@ -87,6 +96,60 @@ export const RELEASE_NOTES: ReleaseNote[] = [
           "Escolha uma sala na tela inicial.",
           "Escolha a sala ou Agenda Pessoal.",
           "A agenda e a lista de horarios carregam automaticamente.",
+        ],
+      },
+      {
+        title: "Consultar a ajuda visual",
+        description: "A aba Como funciona abre topicos com passo a passo e uma demonstracao visual do fluxo.",
+        steps: [
+          "Clique no icone de ajuda no cabecalho do calendario.",
+          "Abra Como funciona na lateral da pagina de ajuda.",
+          "Escolha um topico para ver o exemplo visual e os passos daquele recurso.",
+        ],
+      },
+      {
+        title: "Ver atualizacoes por topico",
+        description: "A aba Atualizacoes mostra cada novidade como um topico com passos e exemplo visual.",
+        steps: [
+          "Abra a pagina de ajuda pelo icone de ajuda.",
+          "Clique em Atualizacoes para expandir a versao desejada.",
+          "Escolha um topico da versao para ver o resumo, o passo a passo e o exemplo visual.",
+        ],
+      },
+      {
+        title: "Acompanhar notificacoes por status",
+        description: "A pagina de notificacoes usa cores para diferenciar lidas, nao lidas, pendentes, aceitas e rejeitadas.",
+        steps: [
+          "Abra a pagina de notificacoes pelo sino.",
+          "Use os cards do topo para ver pendencias e avisos nao lidos.",
+          "Confira as badges: verde para lida/aceita, amarelo para pendente e vermelho para nao lida/rejeitada.",
+        ],
+      },
+      {
+        title: "Ver detalhes de uma notificacao",
+        description: "Cada aviso pode abrir uma ficha com contexto da reuniao ou da solicitacao sem sair da agenda.",
+        steps: [
+          "Abra o sino ou a pagina de notificacoes.",
+          "Clique em Ver detalhes na notificacao desejada.",
+          "Confira titulo, sala, horario, quem agendou, convidados e, quando existir, a sugestao de remarcacao.",
+        ],
+      },
+      {
+        title: "Receber notificacoes de agendamento",
+        description: "Confirmacoes, convites, remarcacoes, cancelamentos e lembretes tambem aparecem dentro do sistema.",
+        steps: [
+          "Abra o sino ou a pagina de notificacoes.",
+          "Clique em Abrir Teams quando a sala tiver link do Teams configurado.",
+          "Se a sala nao tiver link do Teams, a notificacao aparece sem botao externo.",
+        ],
+      },
+      {
+        title: "Usar o menu lateral no mobile",
+        description: "Em telas compactas, a lista de salas abre como painel sobre a agenda e fecha automaticamente.",
+        steps: [
+          "Clique no botao de menu no cabecalho do calendario.",
+          "Escolha uma sala para carregar a agenda.",
+          "O painel fecha sozinho; para cancelar, toque fora do menu.",
         ],
       },
     ],

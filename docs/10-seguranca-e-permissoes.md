@@ -88,6 +88,20 @@ Headers:
 - `Authorization: Bearer <CRON_SECRET>`
 - `x-cron-secret: <CRON_SECRET>`
 
+## Notificacoes internas
+
+As notificacoes sao sempre buscadas pelo `userId` autenticado.
+
+Cuidados implementados:
+
+- `href` passa por `sanitizeNotificationHref`.
+- links externos sao exibidos apenas se forem links do Teams permitidos em `lib/safe-links.ts`;
+- `metadata` passa por sanitizacao em `lib/notifications.ts`;
+- fallback de detalhes de remarcacao busca apenas solicitacoes do usuario autenticado ou reservas em que ele e responsavel;
+- a interface renderiza os detalhes como texto React, sem HTML injetado;
+- notificacoes antigas sem `metadata` exibem fallback quando a solicitacao correspondente ainda existe no banco;
+- o polling do sino consulta somente `/api/notifications`, que ja filtra por usuario autenticado.
+
 ## Checklist de producao
 
 - HTTPS ativo.

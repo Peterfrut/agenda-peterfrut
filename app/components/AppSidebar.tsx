@@ -20,11 +20,12 @@ type Props = {
 };
 
 export function AppSidebar({ roomId, onRoomChange }: Props) {
-  const { setOpenMobile } = useSidebar(); // <- importante (fecha o offcanvas no mobile)
+  const { setOpen, setOpenMobile } = useSidebar(); // fecha o offcanvas em qualquer largura compacta
 
   function handleRoomChange(nextRoomId?: string) {
-    onRoomChange(nextRoomId);     // <- muda a sala na SchedulePage
-    setOpenMobile(false);         // <- fecha o menu mobile
+    onRoomChange(nextRoomId);
+    setOpen(false);
+    setOpenMobile(false);
   }
 
   return (

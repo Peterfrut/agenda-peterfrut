@@ -90,6 +90,7 @@ model Notification {
   title     String
   message   String
   href      String?
+  metadata  Json?
   readAt    DateTime?
   createdAt DateTime @default(now())
 

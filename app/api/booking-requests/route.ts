@@ -47,6 +47,60 @@ async function sendParticipantEmailSafely(kind: "canceled", booking: BookingLike
   }
 }
 
+type BookingNotificationDetails = Pick<
+  Booking,
+  "title" | "roomName" | "date" | "startTime" | "endTime" | "userName" | "userEmail" | "participantsEmails"
+>;
+
+function bookingDetailsForNotification(booking: BookingNotificationDetails) {
+  const participants = participantList(booking.participantsEmails);
+  const details = [
+    { label: "Titulo", value: booking.title || "Agendamento" },
+    { label: "Sala", value: booking.roomName },
+    { label: "Horario da reuniao", value: `${booking.date} das ${booking.startTime} as ${booking.endTime}` },
+    { label: "Quem agendou", value: `${booking.userName} (${booking.userEmail})` },
+  ];
+
+  return { details, participants };
+}
+
+function requestNotificationMetadata(params: {
+  booking: BookingNotificationDetails;
+  requesterName: string;
+  requesterEmail: string;
+  description: string;
+  requestedDate?: string | null;
+  requestedStartTime?: string | null;
+  requestedEndTime?: string | null;
+  statusLabel?: string;
+  summary: string;
+}) {
+  const bookingDetails = bookingDetailsForNotification(params.booking);
+  const details = [
+    { label: "Solicitante", value: `${params.requesterName} (${params.requesterEmail})` },
+    ...bookingDetails.details,
+  ];
+
+  if (params.requestedDate && params.requestedStartTime && params.requestedEndTime) {
+    details.push({
+      label: "Novo horario sugerido",
+      value: `${params.requestedDate} das ${params.requestedStartTime} as ${params.requestedEndTime}`,
+    });
+  }
+
+  if (params.statusLabel) {
+    details.push({ label: "Status", value: params.statusLabel });
+  }
+
+  details.push({ label: "Observacao", value: params.description });
+
+  return {
+    description: params.summary,
+    details,
+    participants: bookingDetails.participants,
+  };
+}
+
 function requestDto(item: {
   id: string;
   type: string;
@@ -199,6 +253,14 @@ export async function POST(req: NextRequest) {
             title: "Ausencia registrada",
             message: `Voce saiu da reserva "${booking.title}".`,
             href: "/notifications",
+            metadata: requestNotificationMetadata({
+              booking,
+              requesterName: auth.user.name,
+              requesterEmail: auth.user.email,
+              description: data.description.trim(),
+              statusLabel: "Ausencia registrada",
+              summary: "Voce informou que nao vai comparecer e foi removido dos convidados desta reuniao.",
+            }),
           },
         });
 
@@ -210,6 +272,14 @@ export async function POST(req: NextRequest) {
         title: "Convidado nao vai comparecer",
         message: `${auth.user.name} informou que nao vai comparecer em "${booking.title}".`,
         href: "/notifications",
+        metadata: requestNotificationMetadata({
+          booking,
+          requesterName: auth.user.name,
+          requesterEmail: auth.user.email,
+          description: data.description.trim(),
+          statusLabel: "Ausencia registrada",
+          summary: `${auth.user.name} informou que nao vai comparecer nesta reuniao.`,
+        }),
       });
       await sendParticipantEmailSafely("canceled", result.updatedBooking as BookingLike, requesterEmail);
 
@@ -260,6 +330,17 @@ export async function POST(req: NextRequest) {
       title: "Sugestao de remarcacao",
       message: `${auth.user.name} sugeriu remarcar "${booking.title}".`,
       href: "/notifications",
+      metadata: requestNotificationMetadata({
+        booking,
+        requesterName: auth.user.name,
+        requesterEmail: auth.user.email,
+        description: data.description.trim(),
+        requestedDate: data.requestedDate,
+        requestedStartTime: data.requestedStartTime,
+        requestedEndTime: data.requestedEndTime,
+        statusLabel: "Pendente",
+        summary: `${auth.user.name} sugeriu outro horario para esta reuniao.`,
+      }),
     });
 
     return NextResponse.json({ ok: true, request: requestDto(created) }, { status: 201 });
@@ -323,6 +404,17 @@ export async function PATCH(req: NextRequest) {
         title: "Solicitacao rejeitada",
         message: `Sua solicitacao para "${request.booking.title}" foi rejeitada. O horario original continua valendo.`,
         href: "/notifications",
+        metadata: requestNotificationMetadata({
+          booking: request.booking,
+          requesterName: request.requesterEmail,
+          requesterEmail: request.requesterEmail,
+          description: request.description,
+          requestedDate: request.requestedDate,
+          requestedStartTime: request.requestedStartTime,
+          requestedEndTime: request.requestedEndTime,
+          statusLabel: "Rejeitada",
+          summary: "O responsavel rejeitou sua sugestao; o horario original continua valendo.",
+        }),
       });
 
       return NextResponse.json({ ok: true, request: requestDto(updated) });
@@ -359,6 +451,17 @@ export async function PATCH(req: NextRequest) {
       title: "Sugestao aceita",
       message: `O responsavel viu sua sugestao para "${request.booking.title}". A reserva original continua ate ele remarcar.`,
       href: "/notifications",
+      metadata: requestNotificationMetadata({
+        booking: request.booking,
+        requesterName: request.requesterEmail,
+        requesterEmail: request.requesterEmail,
+        description: request.description,
+        requestedDate: request.requestedDate,
+        requestedStartTime: request.requestedStartTime,
+        requestedEndTime: request.requestedEndTime,
+        statusLabel: "Aceita",
+        summary: "O responsavel aceitou sua sugestao como aviso, mas a reserva so muda quando ele editar o agendamento.",
+      }),
     });
 
     return NextResponse.json({ ok: true, request: requestDto(updated) });

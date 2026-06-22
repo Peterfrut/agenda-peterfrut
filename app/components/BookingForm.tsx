@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Input } from "@/app/components/ui/input";
 import { Button } from "@/app/components/ui/button";
 import { Alert, AlertDescription } from "@/app/components/ui/alert";
+import { revalidateNotifications } from "@/app/components/notifications-cache";
 
 import {
   minutesToTime,
@@ -377,6 +378,7 @@ export function BookingForm({ roomId, date, onDateChange, onCreated }: Props) {
       }
 
       revalidateCalendar();
+      await revalidateNotifications();
       onCreated();
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : "Erro ao salvar no servidor.");

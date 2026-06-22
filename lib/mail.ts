@@ -5,6 +5,7 @@ import { resend, getFromEmail } from "@/lib/mailer";
 import fs from "fs";
 import path from "path";
 import { escapeHtml, getAppBaseUrl } from "@/lib/security";
+import { isAllowedTeamsHref } from "@/lib/safe-links";
 
 export type BookingLike = {
   id: string;
@@ -82,12 +83,17 @@ const QR_PNG_BY_ROOM_ID: Record<string, string> = {
   auditorio_sup: "/qr/auditorio_sup.png",
 };
 
-function buildAgendaLink(booking: BookingLike) {
+export function buildBookingAgendaLink(booking: Pick<BookingLike, "roomId" | "date">) {
   const base = getBaseUrl();
   const url = new URL(base);
   url.searchParams.set("roomId", booking.roomId);
   url.searchParams.set("date", booking.date);
   return url.toString();
+}
+
+export function getTeamsUrlForRoom(roomId: string) {
+  const teamsUrl = (TEAMS_BY_ROOM_ID[roomId] || "").trim();
+  return isAllowedTeamsHref(teamsUrl) ? teamsUrl : "";
 }
 
 function buildSubject(kind: MailKind, booking: BookingLike, role: RecipientRole) {
@@ -153,7 +159,7 @@ async function buildHtml(
   const d = new Date(`${booking.date}T00:00:00`);
   const dateLong = format(d, "dd 'de' MMMM 'de' yyyy (EEEE)", { locale: ptBR });
   const timeLabel = `${booking.startTime} às ${booking.endTime}`;
-  const agendaLink = buildAgendaLink(booking);
+  const agendaLink = buildBookingAgendaLink(booking);
 
   const participantsList = booking.participantsEmails
     ? booking.participantsEmails
@@ -385,7 +391,7 @@ export async function sendBookingEmail(kind: MailKind, booking: BookingLike) {
   // Remotos (fallback)
   const logoUrl = new URL("/logo_peterfrut.png", base).toString();
 
-  const teamsUrl = (TEAMS_BY_ROOM_ID[booking.roomId] || "").trim();
+  const teamsUrl = getTeamsUrlForRoom(booking.roomId);
   const qrPath = QR_PNG_BY_ROOM_ID[booking.roomId]; // "/qr/....png"
   const qrUrl = qrPath ? new URL(qrPath, base).toString() : undefined;
   const logoCid = "logo-image";
@@ -491,7 +497,7 @@ export async function sendBookingParticipantEmail(
   const from = getFromEmail();
   const base = getBaseUrl();
   const logoUrl = new URL("/logo_peterfrut.png", base).toString();
-  const teamsUrl = (TEAMS_BY_ROOM_ID[booking.roomId] || "").trim();
+  const teamsUrl = getTeamsUrlForRoom(booking.roomId);
   const qrPath = QR_PNG_BY_ROOM_ID[booking.roomId];
   const qrUrl = qrPath ? new URL(qrPath, base).toString() : undefined;
   const logoCid = "logo-image";

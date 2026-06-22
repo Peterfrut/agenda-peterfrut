@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/app/components/ui/dialog";
+import { revalidateNotifications } from "@/app/components/notifications-cache";
 
 type Props = {
   open: boolean;
@@ -144,6 +145,7 @@ export function ManageGuestsDialog({ open, booking, onOpenChange, onUpdated }: P
       if (!res.ok) throw new Error(json?.error || "Erro ao atualizar convidados.");
 
       toast.success("Agendamento atualizado.");
+      await revalidateNotifications();
       onUpdated(json as Booking);
       onOpenChange(false);
     } catch (err: unknown) {

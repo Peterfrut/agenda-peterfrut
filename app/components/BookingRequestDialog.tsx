@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/app/components/ui/dialog";
+import { revalidateNotifications } from "@/app/components/notifications-cache";
 
 type RequestType = "reschedule" | "decline";
 
@@ -68,6 +69,7 @@ export function BookingRequestDialog({ open, type, booking, onOpenChange, onCrea
       if (!res.ok) throw new Error(json?.error || "Erro ao enviar solicitacao.");
 
       toast.success("Solicitacao enviada.");
+      await revalidateNotifications();
       onCreated();
       onOpenChange(false);
     } catch (err: unknown) {

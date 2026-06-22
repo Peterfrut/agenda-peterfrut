@@ -1,5 +1,10 @@
 // app/api/bookings/route.ts
-import { sendBookingEmail, sendBookingParticipantEmail, type BookingLike } from "@/lib/mail";
+import {
+  getTeamsUrlForRoom,
+  sendBookingEmail,
+  sendBookingParticipantEmail,
+  type BookingLike,
+} from "@/lib/mail";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { intervalsOverlap, isWithinWorkingHours } from "@/lib/time";
@@ -333,6 +338,136 @@ async function sendParticipantEmailSafely(
   }
 }
 
+type BookingNotificationKind = "created" | "updated" | "canceled";
+type BookingNotificationRole = "owner" | "participant";
+
+function bookingDisplayTitle(booking: BookingLike) {
+  return booking.title?.trim() || "Agendamento";
+}
+
+function bookingDateTimeLabel(booking: BookingLike) {
+  return `${booking.date} das ${booking.startTime} as ${booking.endTime}`;
+}
+
+function bookingNotificationHref(booking: BookingLike, kind: BookingNotificationKind) {
+  if (kind === "canceled") return null;
+  return getTeamsUrlForRoom(booking.roomId) || null;
+}
+
+function bookingNotificationMetadata(
+  kind: BookingNotificationKind,
+  role: BookingNotificationRole,
+  booking: BookingLike
+) {
+  const title = bookingDisplayTitle(booking);
+  const participants = splitEmails(booking.participantsEmails ?? "");
+  const details = [
+    { label: "Titulo", value: title },
+    { label: "Sala", value: booking.roomName },
+    { label: "Data", value: booking.date },
+    { label: "Horario da reuniao", value: `${booking.startTime} as ${booking.endTime}` },
+    { label: "Quem agendou", value: `${booking.userName} (${booking.userEmail})` },
+  ];
+
+  const action =
+    kind === "created"
+      ? role === "participant"
+        ? "Voce recebeu um convite para esta reuniao."
+        : "Seu agendamento foi confirmado."
+      : kind === "updated"
+        ? "Os dados desta reuniao foram atualizados."
+        : "Esta reuniao foi cancelada.";
+
+  return {
+    description: action,
+    details,
+    participants,
+  };
+}
+
+function bookingNotificationText(
+  kind: BookingNotificationKind,
+  role: BookingNotificationRole,
+  booking: BookingLike
+) {
+  const title = bookingDisplayTitle(booking);
+  const dateTime = bookingDateTimeLabel(booking);
+
+  if (role === "participant") {
+    if (kind === "created") {
+      return {
+        type: "booking_guest_invited",
+        title: "Voce foi convidado",
+        message: `${booking.userName} convidou voce para "${title}" em ${booking.roomName}, ${dateTime}.`,
+      };
+    }
+
+    if (kind === "updated") {
+      return {
+        type: "booking_guest_updated",
+        title: "Reuniao atualizada",
+        message: `A reuniao "${title}" em ${booking.roomName} foi atualizada para ${dateTime}.`,
+      };
+    }
+
+    return {
+      type: "booking_guest_canceled",
+      title: "Reuniao cancelada",
+      message: `A reuniao "${title}" em ${booking.roomName}, ${dateTime}, foi cancelada.`,
+    };
+  }
+
+  if (kind === "created") {
+    return {
+      type: "booking_owner_confirmed",
+      title: "Agendamento confirmado",
+      message: `Sua reserva "${title}" em ${booking.roomName} foi confirmada para ${dateTime}.`,
+    };
+  }
+
+  if (kind === "updated") {
+    return {
+      type: "booking_owner_updated",
+      title: "Agendamento atualizado",
+      message: `Sua reserva "${title}" em ${booking.roomName} foi atualizada para ${dateTime}.`,
+    };
+  }
+
+  return {
+    type: "booking_owner_canceled",
+    title: "Agendamento excluido",
+    message: `Sua reserva "${title}" em ${booking.roomName}, ${dateTime}, foi excluida.`,
+  };
+}
+
+async function createBookingNotificationSafely(
+  kind: BookingNotificationKind,
+  role: BookingNotificationRole,
+  booking: BookingLike,
+  email: string
+) {
+  const text = bookingNotificationText(kind, role, booking);
+
+  try {
+    await createNotificationForEmail(email, {
+      ...text,
+      href: bookingNotificationHref(booking, kind),
+      metadata: bookingNotificationMetadata(kind, role, booking),
+    });
+  } catch (err) {
+    console.error(`[BOOKING NOTIFICATION] Falha ao criar notificacao para ${email}.`, err);
+  }
+}
+
+async function notifyBookingSafely(kind: BookingNotificationKind, booking: BookingLike) {
+  await createBookingNotificationSafely(kind, "owner", booking, booking.userEmail);
+
+  const participants = splitEmails(booking.participantsEmails ?? "");
+  for (const email of participants) {
+    await createBookingNotificationSafely(kind, "participant", booking, email);
+  }
+}
+
 async function lockBookingDay(tx: Prisma.TransactionClient, roomId: string, date: string, email?: string) {
   const scope = email ? `${roomId}:${date}:${email}` : `${roomId}:${date}`;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${scope}))`;
@@ -574,6 +709,7 @@ export async function POST(req: NextRequest) {
     });
 
     await sendBookingEmailSafely("created", created[0] as BookingLike);
+    await notifyBookingSafely("created", created[0] as BookingLike);
 
     return NextResponse.json(toBookingDto(created[0], auth.user), {
       status: 201,
@@ -648,26 +784,21 @@ export async function PATCH(req: NextRequest) {
 
       for (const email of removed) {
         await sendParticipantEmailSafely("canceled", updated as BookingLike, email);
-        await createNotificationForEmail(email, {
-          type: "booking_guest_removed",
-          title: "Convite removido",
-          message: `Voce foi removido da reserva "${updated.title}" em ${updated.roomName}.`,
-          href: "/notifications",
-        });
+        await createBookingNotificationSafely("canceled", "participant", updated as BookingLike, email);
       }
 
       for (const email of added) {
         await sendParticipantEmailSafely("created", updated as BookingLike, email);
-        await createNotificationForEmail(email, {
-          type: "booking_guest_added",
-          title: "Novo convite",
-          message: `Voce foi adicionado na reserva "${updated.title}" em ${updated.roomName}.`,
-          href: "/notifications",
-        });
+        await createBookingNotificationSafely("created", "participant", updated as BookingLike, email);
       }
 
       if (titleChanged) {
         await sendBookingEmailSafely("updated", updated as BookingLike);
+        await createBookingNotificationSafely("updated", "owner", updated as BookingLike, updated.userEmail);
+        const alreadyInvited = nextParticipants.filter((email) => !added.includes(email));
+        for (const email of alreadyInvited) {
+          await createBookingNotificationSafely("updated", "participant", updated as BookingLike, email);
+        }
       }
 
       return NextResponse.json(toBookingDto(updated, auth.user));
@@ -745,6 +876,7 @@ export async function PATCH(req: NextRequest) {
     });
 
     await sendBookingEmailSafely("updated", updated as BookingLike);
+    await notifyBookingSafely("updated", updated as BookingLike);
     return NextResponse.json(toBookingDto(updated, auth.user));
   } catch (err: unknown) {
     console.error(err);
@@ -788,6 +920,7 @@ export async function DELETE(req: NextRequest) {
 
     await prisma.booking.delete({ where: { id: booking.id } });
     await sendBookingEmailSafely("canceled", booking as BookingLike);
+    await notifyBookingSafely("canceled", booking as BookingLike);
 
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
