@@ -327,7 +327,7 @@ export default function PatchNotesPage() {
 
         <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
           <aside className="lg:sticky lg:top-4 lg:self-start">
-            <Card className={`p-2 ${styles.sidebarCard}`}>
+            <Card className={`flex gap-2 p-2 ${styles.sidebarCard}`}>
               <button
                 type="button"
                 onClick={toggleUpdates}
