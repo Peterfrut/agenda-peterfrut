@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { normalizeToken } from "@/lib/formatters";
 import { rateLimit } from "@/lib/rate-limit";
 import { getClientIp, retryAfterResponse } from "@/lib/security";
+import { getUrlTokenLookupValues } from "@/lib/token-security";
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,19 +11,19 @@ export async function POST(req: NextRequest) {
     if (!rl.ok) return retryAfterResponse("Muitas tentativas.", rl.resetAt);
 
     const body = await req.json().catch(() => ({}));
-    const token = normalizeToken(body?.token);
+    const tokenLookup = getUrlTokenLookupValues(body?.token);
 
-    if (!token) {
-      return NextResponse.json({ ok: false, code: "INVALID", message: "Token inválido." }, { status: 400 });
+    if (!tokenLookup) {
+      return NextResponse.json({ ok: false, code: "INVALID", message: "Token invalido." }, { status: 400 });
     }
 
     const evt = await prisma.emailVerificationToken.findFirst({
-      where: { token },
+      where: { OR: [{ token: tokenLookup.hashed }, { token: tokenLookup.raw }] },
       select: { id: true, userId: true, usedAt: true, expiresAt: true },
     });
 
     if (!evt) {
-      return NextResponse.json({ ok: false, code: "INVALID", message: "Token inválido." }, { status: 400 });
+      return NextResponse.json({ ok: false, code: "INVALID", message: "Token invalido." }, { status: 400 });
     }
 
     if (evt.usedAt) {
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
 
     if (evt.expiresAt <= new Date()) {
       return NextResponse.json(
-        { ok: false, code: "EXPIRED", message: "Tempo limite de confirmação expirou." },
+        { ok: false, code: "EXPIRED", message: "Tempo limite de confirmacao expirou." },
         { status: 400 }
       );
     }

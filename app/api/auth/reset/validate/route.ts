@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { normalizeToken } from "@/lib/formatters";
+import { getUrlTokenLookupValues } from "@/lib/token-security";
 
 export async function GET(req: NextRequest) {
   try {
-    const token = normalizeToken(req.nextUrl.searchParams.get("token"));
+    const tokenLookup = getUrlTokenLookupValues(req.nextUrl.searchParams.get("token"));
 
-    if (!token) {
+    if (!tokenLookup) {
       return NextResponse.json(
         { ok: false, reason: "invalid" },
         { status: 400 }
@@ -14,7 +14,10 @@ export async function GET(req: NextRequest) {
     }
 
     const prt = await prisma.passwordResetToken.findFirst({
-      where: { token, usedAt: null },
+      where: {
+        OR: [{ token: tokenLookup.hashed }, { token: tokenLookup.raw }],
+        usedAt: null,
+      },
       select: { id: true, expiresAt: true, user: { select: { active: true } } },
     });
 

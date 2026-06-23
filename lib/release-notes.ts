@@ -25,6 +25,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "Central de notificacoes e pagina de atualizacoes do sistema.",
       "Atualizacoes com topicos navegaveis e exemplos visuais por novidade.",
       "Ajuda visual com topicos expansivos e exemplos de uso por funcionalidade.",
+      "Central de ajuda com transicoes suaves ao trocar abas, topicos e exemplos visuais.",
       "Pagina de notificacoes mais visual com badges por status.",
       "Detalhes por notificacao com sala, horario, responsavel, participantes e contexto da solicitacao.",
       "Detalhes de notificacao abrindo direto no sino da agenda, sem sair do calendario.",
@@ -100,7 +101,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       },
       {
         title: "Consultar a ajuda visual",
-        description: "A aba Como funciona abre topicos com passo a passo e uma demonstracao visual do fluxo.",
+        description: "A aba Como funciona abre topicos com passo a passo, demonstracao visual e transicoes suaves.",
         steps: [
           "Clique no icone de ajuda no cabecalho do calendario.",
           "Abra Como funciona na lateral da pagina de ajuda.",

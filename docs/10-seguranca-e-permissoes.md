@@ -10,6 +10,8 @@ O sistema usa:
 - cookie HTTP-only;
 - expiracao de 8 horas.
 
+Tokens de verificacao de e-mail e redefinicao de senha sao enviados no link, mas gravados no banco apenas como hash SHA-256. A consulta aceita hash novo e token legado em texto puro para nao invalidar links emitidos antes da melhoria.
+
 ## Senha forte
 
 Cadastro e reset usam a mesma regra:
@@ -48,13 +50,23 @@ O backend consulta o banco para confirmar role atual.
 
 ## CSRF e Origin
 
-`proxy.ts` valida `Origin` em:
+`proxy.ts` valida `Origin` ou, quando `Origin` nao existe, `Referer` em:
 
 - `POST`
 - `PATCH`
 - `DELETE`
 
-Se o host nao bater com o host da aplicacao, bloqueia.
+Se o host nao bater com o host da aplicacao, bloqueia. Requisicoes unsafe sem `Origin` e sem `Referer` tambem sao bloqueadas, exceto o job de cron, que usa `CRON_SECRET`.
+
+## Headers de seguranca
+
+O projeto envia headers de defesa basica:
+
+- `X-Content-Type-Options: nosniff`;
+- `Referrer-Policy: strict-origin-when-cross-origin`;
+- `X-Frame-Options: DENY`;
+- `Permissions-Policy` bloqueando camera, microfone e geolocalizacao;
+- `Content-Security-Policy` com `base-uri 'self'`, `object-src 'none'` e `frame-ancestors 'none'`.
 
 ## Rate limit
 
@@ -87,6 +99,8 @@ Headers:
 
 - `Authorization: Bearer <CRON_SECRET>`
 - `x-cron-secret: <CRON_SECRET>`
+
+A rota de cron e liberada do login por cookie no `proxy.ts`, mas continua protegida pelo segredo no proprio handler.
 
 ## Notificacoes internas
 

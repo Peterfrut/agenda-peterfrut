@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { randomBytes } from "crypto";
 import { sendEmailVerification } from "@/lib/verify-email-mail";
 import { isPeterfrutEmail, normEmail } from "@/lib/formatters";
 import { rateLimit } from "@/lib/rate-limit";
 import { getAppBaseUrl, getClientIp, retryAfterResponse } from "@/lib/security";
+import { createUrlToken, hashUrlToken } from "@/lib/token-security";
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,11 +36,11 @@ export async function POST(req: NextRequest) {
       data: { usedAt: new Date() },
     });
 
-    const token = randomBytes(32).toString("hex");
+    const token = createUrlToken();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
     await prisma.emailVerificationToken.create({
-      data: { token, userId: user.id, expiresAt },
+      data: { token: hashUrlToken(token), userId: user.id, expiresAt },
     });
 
     await sendEmailVerification({

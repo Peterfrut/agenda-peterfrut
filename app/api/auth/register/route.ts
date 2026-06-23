@@ -1,11 +1,11 @@
 import { NextResponse, NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { randomBytes } from "crypto";
 import { rateLimit } from "@/lib/rate-limit";
 import { sendEmailVerification } from "@/lib/verify-email-mail";
 import { PASSWORD_RULES_MESSAGE, isPeterfrutEmail, normEmail, validatePassword } from "@/lib/formatters";
 import { getAppBaseUrl, getClientIp, retryAfterResponse } from "@/lib/security";
+import { createUrlToken, hashUrlToken } from "@/lib/token-security";
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
@@ -70,11 +70,11 @@ export async function POST(req: NextRequest) {
     });
 
     // token 15 min
-    const token = randomBytes(32).toString("hex");
+    const token = createUrlToken();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
     await prisma.emailVerificationToken.create({
-      data: { token, userId: user.id, expiresAt },
+      data: { token: hashUrlToken(token), userId: user.id, expiresAt },
     });
 
     const verifyUrl = `${getAppBaseUrl()}/verify-email/${token}`;

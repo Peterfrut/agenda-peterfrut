@@ -4,11 +4,11 @@ import bcrypt from "bcryptjs";
 import { rateLimit } from "@/lib/rate-limit";
 import { PASSWORD_RULES_MESSAGE, validatePassword } from "@/lib/formatters";
 import { getClientIp, retryAfterResponse } from "@/lib/security";
+import { getUrlTokenLookupValues } from "@/lib/token-security";
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
 
-  // Ex.: 10 resets/min por IP
   const rl = rateLimit(`reset:ip:${ip}`, 10, 60_000);
   if (!rl.ok) {
     return retryAfterResponse("Muitas tentativas.", rl.resetAt);
@@ -18,34 +18,16 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ ok: false, message: "Body inválido." }, { status: 400 });
+    return NextResponse.json({ ok: false, message: "Body invalido." }, { status: 400 });
   }
 
-  const token = String(body?.token ?? "").trim();
+  const tokenLookup = getUrlTokenLookupValues(body?.token);
   const password = String(body?.password ?? "");
-  if (!token || !password) {
+  if (!tokenLookup || !password) {
     return NextResponse.json(
-      { ok: false, message: "Token e nova senha são obrigatórios." },
+      { ok: false, message: "Token e nova senha sao obrigatorios." },
       { status: 400 }
     );
-  }
-
-  const prt = await prisma.passwordResetToken.findUnique({
-    where: { token },
-    include: { user: { select: { id: true, active: true } } },
-  });
-
-  if (!prt) {
-    return NextResponse.json({ ok: false, message: "Token inválido." }, { status: 400 });
-  }
-  if (!prt.user.active) {
-    return NextResponse.json({ ok: false, message: "Token inválido." }, { status: 400 });
-  }
-  if (prt.usedAt) {
-    return NextResponse.json({ ok: false, message: "Token já utilizado." }, { status: 400 });
-  }
-  if (prt.expiresAt.getTime() < Date.now()) {
-    return NextResponse.json({ ok: false, message: "Token expirado." }, { status: 400 });
   }
 
   if (!validatePassword(password)) {
@@ -53,6 +35,21 @@ export async function POST(req: NextRequest) {
       { ok: false, message: PASSWORD_RULES_MESSAGE },
       { status: 400 }
     );
+  }
+
+  const prt = await prisma.passwordResetToken.findFirst({
+    where: { OR: [{ token: tokenLookup.hashed }, { token: tokenLookup.raw }] },
+    include: { user: { select: { id: true, active: true } } },
+  });
+
+  if (!prt || !prt.user.active) {
+    return NextResponse.json({ ok: false, message: "Token invalido." }, { status: 400 });
+  }
+  if (prt.usedAt) {
+    return NextResponse.json({ ok: false, message: "Token ja utilizado." }, { status: 400 });
+  }
+  if (prt.expiresAt.getTime() < Date.now()) {
+    return NextResponse.json({ ok: false, message: "Token expirado." }, { status: 400 });
   }
 
   const hash = await bcrypt.hash(password, 10);

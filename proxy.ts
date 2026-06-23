@@ -1,8 +1,6 @@
-// middleware.ts
 import { NextRequest, NextResponse } from "next/server";
 import { verifyJwt, getTokenFromRequest } from "@/lib/auth";
 
-// rotas e prefixos públicos (liberados sem login)
 const PUBLIC_PREFIXES = [
   "/login",
   "/register",
@@ -21,49 +19,83 @@ const PUBLIC_PREFIXES = [
   "/favicon.ico",
   "/logo_peterfrut.png",
   "/auditorio_sup.png",
-  "/sala_reuniao_sup.png"
+  "/sala_reuniao_sup.png",
 ];
+
+const CRON_PREFIXES = ["/api/jobs/reminders", "/api/jobs/remidenrs"];
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+const SECURITY_HEADERS: Array<[string, string]> = [
+  ["X-Content-Type-Options", "nosniff"],
+  ["Referrer-Policy", "strict-origin-when-cross-origin"],
+  ["X-Frame-Options", "DENY"],
+  ["Permissions-Policy", "camera=(), microphone=(), geolocation=()"],
+  ["Content-Security-Policy", "base-uri 'self'; object-src 'none'; frame-ancestors 'none'"],
+];
+
+function matchesPrefix(pathname: string, prefixes: string[]) {
+  return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"));
+}
+
+function withSecurityHeaders(response: NextResponse) {
+  for (const [key, value] of SECURITY_HEADERS) {
+    response.headers.set(key, value);
+  }
+  return response;
+}
+
+function forbidden(message: string) {
+  return withSecurityHeaders(NextResponse.json({ ok: false, message }, { status: 403 }));
+}
+
+function isSameHost(value: string, req: NextRequest) {
+  try {
+    return new URL(value).host === req.nextUrl.host;
+  } catch {
+    return false;
+  }
+}
+
+function validateUnsafeRequest(req: NextRequest) {
+  if (SAFE_METHODS.has(req.method)) return null;
+
+  const origin = req.headers.get("origin");
+  if (origin) {
+    return isSameHost(origin, req) ? null : "Origem invalida";
+  }
+
+  const referer = req.headers.get("referer");
+  if (referer) {
+    return isSameHost(referer, req) ? null : "Origem invalida";
+  }
+
+  return "Origem ausente";
+}
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const isCronRoute = matchesPrefix(pathname, CRON_PREFIXES);
 
-  if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
-    const origin = req.headers.get("origin");
-    if (origin) {
-      let originUrl: URL | null = null;
-      try {
-        originUrl = new URL(origin);
-      } catch {
-        return NextResponse.json({ ok: false, message: "Origem inválida" }, { status: 403 });
-      }
-      if (originUrl.host !== req.nextUrl.host) {
-        return NextResponse.json({ ok: false, message: "Origem inválida" }, { status: 403 });
-      }
-    }
+  const unsafeError = isCronRoute ? null : validateUnsafeRequest(req);
+  if (unsafeError) {
+    return forbidden(unsafeError);
   }
 
-  // libera rotas públicas (igualdade ou prefixo)
-  if (
-    PUBLIC_PREFIXES.some(
-      (p) => pathname === p || pathname.startsWith(p + "/")
-    )
-  ) {
-    return NextResponse.next();
+  if (matchesPrefix(pathname, PUBLIC_PREFIXES) || isCronRoute) {
+    return withSecurityHeaders(NextResponse.next());
   }
 
   const token = getTokenFromRequest(req);
   const payload = token ? await verifyJwt(token) : null;
 
-  // não autenticado → manda pro login
   if (!payload) {
     const loginUrl = new URL("/login", req.url);
-    return NextResponse.redirect(loginUrl);
+    return withSecurityHeaders(NextResponse.redirect(loginUrl));
   }
 
-  return NextResponse.next();
+  return withSecurityHeaders(NextResponse.next());
 }
 
-// aplica em tudo, exceto estáticos
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

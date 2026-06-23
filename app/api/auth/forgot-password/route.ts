@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { randomBytes } from "crypto";
 import { sendPasswordResetEmail } from "@/lib/password-reset-mail";
 import { isPeterfrutEmail, normEmail } from "@/lib/formatters";
 import { rateLimit } from "@/lib/rate-limit";
 import { getAppBaseUrl, getClientIp, retryAfterResponse } from "@/lib/security";
+import { createUrlToken, hashUrlToken } from "@/lib/token-security";
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    const token = randomBytes(32).toString("hex");
+    const token = createUrlToken();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
     await prisma.passwordResetToken.deleteMany({
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
     await prisma.passwordResetToken.create({
       data: {
-        token,
+        token: hashUrlToken(token),
         userId: user.id,
         expiresAt,
       },

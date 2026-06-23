@@ -24,8 +24,11 @@ import {
 import { RELEASE_NOTES } from "@/lib/release-notes";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import styles from "./patch-notes.module.css";
 
 type HelpTab = "updates" | "guide";
+type ExpandedHelpTab = HelpTab | null;
+
 type HelpVisualKind =
   | "room-select"
   | "calendar"
@@ -256,7 +259,8 @@ function getUpdateTopic(example: ReleaseExample): HelpSection {
 }
 
 export default function PatchNotesPage() {
-  const [activeTab, setActiveTab] = useState<HelpTab>("updates");
+  const [expandedTab, setExpandedTab] = useState<ExpandedHelpTab>(null);
+  const [contentTab, setContentTab] = useState<HelpTab>("guide");
   const [activeReleaseIndex, setActiveReleaseIndex] = useState(0);
   const [activeUpdateTopicIndex, setActiveUpdateTopicIndex] = useState(0);
   const [activeGuideIndex, setActiveGuideIndex] = useState(0);
@@ -267,23 +271,41 @@ export default function PatchNotesPage() {
   const ActiveUpdateIcon = activeUpdateTopic?.icon ?? Sparkles;
   const ActiveGuideIcon = activeGuide.icon;
 
-  function openUpdates(releaseIndex = activeReleaseIndex, topicIndex = activeUpdateTopicIndex) {
+  function toggleUpdates() {
+    setExpandedTab((current) => (current === "updates" ? null : "updates"));
+  }
+
+  function toggleGuide() {
+    setExpandedTab((current) => (current === "guide" ? null : "guide"));
+  }
+
+  function selectUpdateRelease(releaseIndex: number) {
+    const nextReleaseIndex = Math.min(releaseIndex, RELEASE_NOTES.length - 1);
+
+    setExpandedTab("updates");
+    setActiveReleaseIndex(nextReleaseIndex);
+    setActiveUpdateTopicIndex(0);
+  }
+
+  function selectUpdateTopic(releaseIndex = activeReleaseIndex, topicIndex = activeUpdateTopicIndex) {
     const nextReleaseIndex = Math.min(releaseIndex, RELEASE_NOTES.length - 1);
     const nextRelease = RELEASE_NOTES[nextReleaseIndex] ?? RELEASE_NOTES[0];
     const nextTopicIndex = Math.min(topicIndex, Math.max(nextRelease.examples.length - 1, 0));
 
-    setActiveTab("updates");
+    setExpandedTab("updates");
+    setContentTab("updates");
     setActiveReleaseIndex(nextReleaseIndex);
     setActiveUpdateTopicIndex(nextTopicIndex);
   }
 
-  function openGuide(index = activeGuideIndex) {
-    setActiveTab("guide");
+  function selectGuideTopic(index = activeGuideIndex) {
+    setExpandedTab("guide");
+    setContentTab("guide");
     setActiveGuideIndex(index);
   }
 
   return (
-    <main className="min-h-screen bg-background px-4 py-6">
+    <main className={`min-h-screen bg-background px-4 py-6 ${styles.pageEnter}`}>
       <div className="mx-auto flex max-w-6xl flex-col gap-5">
         <div className="rounded-lg border bg-card p-5 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -305,12 +327,12 @@ export default function PatchNotesPage() {
 
         <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
           <aside className="lg:sticky lg:top-4 lg:self-start">
-            <Card className="p-2">
+            <Card className={`p-2 ${styles.sidebarCard}`}>
               <button
                 type="button"
-                onClick={() => openUpdates()}
-                className={`flex w-full items-start gap-3 rounded-md px-3 py-3 text-left text-sm transition ${
-                  activeTab === "updates" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                onClick={toggleUpdates}
+                className={`${styles.navItem} flex w-full items-start gap-3 rounded-md px-3 py-3 text-left text-sm transition ${
+                  expandedTab === "updates" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
                 }`}
               >
                 <Clock3 className="mt-0.5 h-4 w-4 shrink-0" />
@@ -318,24 +340,24 @@ export default function PatchNotesPage() {
                   <span className="flex items-center justify-between gap-2 font-semibold">
                     Atualizações
                     <ChevronDown
-                      className={`h-4 w-4 transition ${activeTab === "updates" ? "rotate-180" : ""}`}
+                      className={`h-4 w-4 transition ${expandedTab === "updates" ? "rotate-180" : ""}`}
                     />
                   </span>
-                  <span className={`block text-xs ${activeTab === "updates" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                  <span className={`block text-xs ${expandedTab === "updates" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
                     Versões, tópicos e exemplos visuais.
                   </span>
                 </span>
               </button>
 
-              <div className={`grid transition-[grid-template-rows] duration-200 ${activeTab === "updates" ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+              <div className={`grid transition-[grid-template-rows] duration-200 ${expandedTab === "updates" ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
                 <div className="overflow-hidden">
                   <div className="mt-2 space-y-3 border-l pl-2">
                     {RELEASE_NOTES.map((note, releaseIndex) => (
                       <div key={note.id} className="space-y-1">
                         <button
                           type="button"
-                          onClick={() => openUpdates(releaseIndex, 0)}
-                          className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left text-sm transition ${
+                          onClick={() => selectUpdateRelease(releaseIndex)}
+                          className={`${styles.navItem} flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left text-sm transition ${
                             activeReleaseIndex === releaseIndex
                               ? "bg-muted font-medium text-foreground"
                               : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
@@ -354,14 +376,14 @@ export default function PatchNotesPage() {
                             {note.examples.map((example, topicIndex) => {
                               const topic = getUpdateTopic(example);
                               const Icon = topic.icon;
-                              const selected = activeTab === "updates" && activeUpdateTopicIndex === topicIndex;
+                              const selected = contentTab === "updates" && activeReleaseIndex === releaseIndex && activeUpdateTopicIndex === topicIndex;
 
                               return (
                                 <button
                                   key={example.title}
                                   type="button"
-                                  onClick={() => openUpdates(releaseIndex, topicIndex)}
-                                  className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition ${
+                                  onClick={() => selectUpdateTopic(releaseIndex, topicIndex)}
+                                  className={`${styles.navItem} flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition ${
                                     selected
                                       ? "bg-muted font-medium text-foreground"
                                       : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
@@ -384,9 +406,9 @@ export default function PatchNotesPage() {
 
               <button
                 type="button"
-                onClick={() => openGuide()}
-                className={`mt-1 flex w-full items-start gap-3 rounded-md px-3 py-3 text-left text-sm transition ${
-                  activeTab === "guide" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                onClick={toggleGuide}
+                className={`${styles.navItem} mt-1 flex w-full items-start gap-3 rounded-md px-3 py-3 text-left text-sm transition ${
+                  expandedTab === "guide" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
                 }`}
               >
                 <BookOpen className="mt-0.5 h-4 w-4 shrink-0" />
@@ -394,28 +416,28 @@ export default function PatchNotesPage() {
                   <span className="flex items-center justify-between gap-2 font-semibold">
                     Como funciona
                     <ChevronDown
-                      className={`h-4 w-4 transition ${activeTab === "guide" ? "rotate-180" : ""}`}
+                      className={`h-4 w-4 transition ${expandedTab === "guide" ? "rotate-180" : ""}`}
                     />
                   </span>
-                  <span className={`block text-xs ${activeTab === "guide" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                  <span className={`block text-xs ${expandedTab === "guide" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
                     Abra os tópicos e veja exemplos visuais.
                   </span>
                 </span>
               </button>
 
-              <div className={`grid transition-[grid-template-rows] duration-200 ${activeTab === "guide" ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+              <div className={`grid transition-[grid-template-rows] duration-200 ${expandedTab === "guide" ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
                 <div className="overflow-hidden">
                   <div className="mt-2 space-y-1 border-l pl-2">
                     {HOW_TO_SECTIONS.map((section, index) => {
                       const Icon = section.icon;
-                      const selected = activeTab === "guide" && activeGuideIndex === index;
+                      const selected = contentTab === "guide" && activeGuideIndex === index;
 
                       return (
                         <button
                           key={section.title}
                           type="button"
-                          onClick={() => openGuide(index)}
-                          className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition ${
+                          onClick={() => selectGuideTopic(index)}
+                          className={`${styles.navItem} flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition ${
                             selected ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
                           }`}
                         >
@@ -433,8 +455,11 @@ export default function PatchNotesPage() {
           </aside>
 
           <section className="min-w-0">
-            {activeTab === "updates" ? (
-              <div className="rounded-lg border bg-card shadow-sm">
+            {contentTab === "updates" ? (
+              <div
+                key={`updates-${activeReleaseIndex}-${activeUpdateTopicIndex}`}
+                className={`rounded-lg border bg-card shadow-sm ${styles.contentPanel}`}
+              >
                 <div className="border-b p-5">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
@@ -452,7 +477,7 @@ export default function PatchNotesPage() {
                   <div className="p-5">
                     {activeUpdateTopic ? (
                       <>
-                        <div className="flex items-start gap-3">
+                        <div className={`flex items-start gap-3 ${styles.topicHeader}`}>
                           <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-md ${activeUpdateTopic.accent}`}>
                             <ActiveUpdateIcon className="h-5 w-5" />
                           </span>
@@ -467,7 +492,7 @@ export default function PatchNotesPage() {
                           <h4 className="text-sm font-semibold uppercase text-muted-foreground">Como usar na prática</h4>
                           <ol className="mt-3 space-y-3">
                             {activeUpdateTopic.steps.map((step, index) => (
-                              <li key={step} className="flex gap-3 rounded-md border bg-background p-3 text-sm">
+                              <li key={step} className={`flex gap-3 rounded-md border bg-background p-3 text-sm ${styles.stepItem}`}>
                                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
                                   {index + 1}
                                 </span>
@@ -485,7 +510,7 @@ export default function PatchNotesPage() {
                       <h4 className="text-sm font-semibold uppercase text-muted-foreground">Resumo da versão</h4>
                       <div className="mt-3 grid gap-2 md:grid-cols-2">
                         {activeRelease.items.map((item) => (
-                          <div key={item} className="flex gap-2 rounded-md border bg-background px-3 py-2 text-sm">
+                          <div key={item} className={`flex gap-2 rounded-md border bg-background px-3 py-2 text-sm ${styles.summaryItem}`}>
                             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
                             <span>{item}</span>
                           </div>
@@ -497,7 +522,7 @@ export default function PatchNotesPage() {
                   <div className="border-t bg-muted/25 p-4 lg:border-l lg:border-t-0">
                     <p className="mb-3 text-sm font-semibold text-muted-foreground">Exemplo visual</p>
                     {activeUpdateTopic ? (
-                      <HelpVisual kind={activeUpdateTopic.visual} />
+                      <HelpVisual key={`${activeUpdateTopic.title}-${activeUpdateTopic.visual}`} kind={activeUpdateTopic.visual} />
                     ) : (
                       <VisualFrame>
                         <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
@@ -509,10 +534,10 @@ export default function PatchNotesPage() {
                 </div>
               </div>
             ) : (
-              <div className="rounded-lg border bg-card shadow-sm">
+              <div key={`guide-${activeGuideIndex}`} className={`rounded-lg border bg-card shadow-sm ${styles.contentPanel}`}>
                 <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_340px]">
                   <div className="p-5">
-                    <div className="flex items-start gap-3">
+                    <div className={`flex items-start gap-3 ${styles.topicHeader}`}>
                       <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-md ${activeGuide.accent}`}>
                         <ActiveGuideIcon className="h-5 w-5" />
                       </span>
@@ -527,7 +552,7 @@ export default function PatchNotesPage() {
                       <h3 className="text-sm font-semibold uppercase text-muted-foreground">Passo a passo</h3>
                       <ol className="mt-3 space-y-3">
                         {activeGuide.steps.map((step, index) => (
-                          <li key={step} className="flex gap-3 rounded-md border bg-background p-3 text-sm">
+                          <li key={step} className={`flex gap-3 rounded-md border bg-background p-3 text-sm ${styles.stepItem}`}>
                             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
                               {index + 1}
                             </span>
@@ -540,7 +565,7 @@ export default function PatchNotesPage() {
 
                   <div className="border-t bg-muted/25 p-4 lg:border-l lg:border-t-0">
                     <p className="mb-3 text-sm font-semibold text-muted-foreground">Exemplo visual</p>
-                    <HelpVisual kind={activeGuide.visual} />
+                    <HelpVisual key={`${activeGuide.title}-${activeGuide.visual}`} kind={activeGuide.visual} />
                   </div>
                 </div>
               </div>
@@ -793,7 +818,7 @@ function HelpVisual({ kind }: { kind: HelpVisualKind }) {
 
 function VisualFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border bg-background p-3 shadow-sm">
+    <div className={`rounded-lg border bg-background p-3 shadow-sm ${styles.visualFrame}`}>
       <div className="mb-3 flex items-center gap-1.5 border-b pb-3">
         <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
         <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />

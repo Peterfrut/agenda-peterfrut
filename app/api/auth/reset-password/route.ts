@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { PASSWORD_RULES_MESSAGE, normalizeToken, validatePassword } from "@/lib/formatters";
+import { PASSWORD_RULES_MESSAGE, validatePassword } from "@/lib/formatters";
 import { rateLimit } from "@/lib/rate-limit";
 import { getClientIp, retryAfterResponse } from "@/lib/security";
+import { getUrlTokenLookupValues } from "@/lib/token-security";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,27 +13,12 @@ export async function POST(req: NextRequest) {
     if (!rl.ok) return retryAfterResponse("Muitas tentativas.", rl.resetAt);
 
     const body = await req.json().catch(() => ({}));
-    const token = normalizeToken(body?.token);
+    const tokenLookup = getUrlTokenLookupValues(body?.token);
     const password = String(body?.password ?? "");
-    const prt = await prisma.passwordResetToken.findFirst({
-      where: {
-        token,
-        expiresAt: { gt: new Date() },
-        usedAt: null,
-      },
-      select: { id: true, userId: true, user: { select: { active: true } } },
-    });
 
-    if (!prt?.user.active) {
+    if (!tokenLookup || !password) {
       return NextResponse.json(
-        { ok: false, message: "Token inválido ou expirado." },
-        { status: 400 }
-      );
-    }
-
-    if (!token || !password) {
-      return NextResponse.json(
-        { ok: false, message: "Token e senha são obrigatórios." },
+        { ok: false, message: "Token e senha sao obrigatorios." },
         { status: 400 }
       );
     }
@@ -44,10 +30,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const prt = await prisma.passwordResetToken.findFirst({
+      where: {
+        OR: [{ token: tokenLookup.hashed }, { token: tokenLookup.raw }],
+        expiresAt: { gt: new Date() },
+        usedAt: null,
+      },
+      select: { id: true, userId: true, user: { select: { active: true } } },
+    });
+
+    if (!prt || !prt.user.active) {
+      return NextResponse.json(
+        { ok: false, message: "Token invalido ou expirado." },
+        { status: 400 }
+      );
+    }
 
     const hash = await bcrypt.hash(password, 10);
 
-    // Troca senha e invalida token.
     await prisma.$transaction([
       prisma.user.update({
         where: { id: prt.userId },
