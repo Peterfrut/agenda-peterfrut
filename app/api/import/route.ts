@@ -5,6 +5,7 @@ import { DateTime } from "luxon";
 import prisma from "@/lib/prisma";
 import { requireAdmin } from "@/lib/api-auth";
 import { ROOMS, PERSONAL_ROOM_ID } from "@/lib/rooms";
+import { createAuditLog } from "@/lib/audit-log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -234,6 +235,27 @@ export async function POST(req: NextRequest) {
       const result = await prisma.booking.createMany({ data: batch, skipDuplicates: true });
       inserted += result.count;
     }
+
+    await createAuditLog(req, auth.user, {
+      action: "import.ics_completed",
+      category: "import",
+      severity: strategy === "replace" ? "warning" : "info",
+      targetType: "room",
+      targetId: roomId,
+      targetLabel: roomName,
+      metadata: {
+        strategy,
+        fileName: file.name,
+        fileSize: file.size,
+        totalParsed: toInsert.length,
+        inserted,
+        duplicatesRemoved,
+        skipped,
+        crossDaySkipped,
+        noUidSkipped,
+        limitSkipped,
+      },
+    });
 
     return NextResponse.json({
       ok: true,

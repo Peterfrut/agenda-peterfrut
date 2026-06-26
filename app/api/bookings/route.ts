@@ -15,6 +15,7 @@ import { requireUser, type SessionUser } from "@/lib/api-auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { retryAfterResponse } from "@/lib/security";
 import { createNotificationForEmail } from "@/lib/notifications";
+import { createAuditLog } from "@/lib/audit-log";
 
 import { addDays, addMonths, addWeeks, format, getDay, parseISO } from "date-fns";
 import { isStep30Minutes, isValidEmail, normEmail, splitEmails } from "@/lib/formatters";
@@ -710,6 +711,21 @@ export async function POST(req: NextRequest) {
 
     await sendBookingEmailSafely("created", created[0] as BookingLike);
     await notifyBookingSafely("created", created[0] as BookingLike);
+    await createAuditLog(req, auth.user, {
+      action: "bookings.created",
+      category: "bookings",
+      targetType: "booking",
+      targetId: created[0].id,
+      targetLabel: created[0].title,
+      metadata: {
+        roomName: created[0].roomName,
+        date: created[0].date,
+        startTime: created[0].startTime,
+        endTime: created[0].endTime,
+        occurrences: created.length,
+        participantsCount: uniq.length,
+      },
+    });
 
     return NextResponse.json(toBookingDto(created[0], auth.user), {
       status: 201,
@@ -801,6 +817,24 @@ export async function PATCH(req: NextRequest) {
         }
       }
 
+      await createAuditLog(req, auth.user, {
+        action: "bookings.details_updated",
+        category: "bookings",
+        targetType: "booking",
+        targetId: updated.id,
+        targetLabel: updated.title,
+        metadata: {
+          roomName: updated.roomName,
+          date: updated.date,
+          startTime: updated.startTime,
+          endTime: updated.endTime,
+          addedParticipants: added.length,
+          removedParticipants: removed.length,
+          titleChanged,
+          longReasonChanged: Object.prototype.hasOwnProperty.call(data, "longReason"),
+        },
+      });
+
       return NextResponse.json(toBookingDto(updated, auth.user));
     }
 
@@ -877,6 +911,23 @@ export async function PATCH(req: NextRequest) {
 
     await sendBookingEmailSafely("updated", updated as BookingLike);
     await notifyBookingSafely("updated", updated as BookingLike);
+    await createAuditLog(req, auth.user, {
+      action: "bookings.rescheduled",
+      category: "bookings",
+      severity: "warning",
+      targetType: "booking",
+      targetId: updated.id,
+      targetLabel: updated.title,
+      metadata: {
+        roomName: updated.roomName,
+        previousDate: booking.date,
+        previousStartTime: booking.startTime,
+        previousEndTime: booking.endTime,
+        date: updated.date,
+        startTime: updated.startTime,
+        endTime: updated.endTime,
+      },
+    });
     return NextResponse.json(toBookingDto(updated, auth.user));
   } catch (err: unknown) {
     console.error(err);
@@ -921,6 +972,20 @@ export async function DELETE(req: NextRequest) {
     await prisma.booking.delete({ where: { id: booking.id } });
     await sendBookingEmailSafely("canceled", booking as BookingLike);
     await notifyBookingSafely("canceled", booking as BookingLike);
+    await createAuditLog(req, auth.user, {
+      action: "bookings.deleted",
+      category: "bookings",
+      severity: "critical",
+      targetType: "booking",
+      targetId: booking.id,
+      targetLabel: booking.title,
+      metadata: {
+        roomName: booking.roomName,
+        date: booking.date,
+        startTime: booking.startTime,
+        endTime: booking.endTime,
+      },
+    });
 
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {

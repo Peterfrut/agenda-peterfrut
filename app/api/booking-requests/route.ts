@@ -9,6 +9,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { retryAfterResponse } from "@/lib/security";
 import { createNotification, createNotificationForEmail } from "@/lib/notifications";
 import { sendBookingParticipantEmail, type BookingLike } from "@/lib/mail";
+import { createAuditLog } from "@/lib/audit-log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -282,6 +283,20 @@ export async function POST(req: NextRequest) {
         }),
       });
       await sendParticipantEmailSafely("canceled", result.updatedBooking as BookingLike, requesterEmail);
+      await createAuditLog(req, auth.user, {
+        action: "requests.decline_created",
+        category: "requests",
+        targetType: "booking",
+        targetId: booking.id,
+        targetLabel: booking.title,
+        metadata: {
+          requestId: result.request.id,
+          roomName: booking.roomName,
+          date: booking.date,
+          startTime: booking.startTime,
+          endTime: booking.endTime,
+        },
+      });
 
       return NextResponse.json({ ok: true, request: requestDto(result.request) }, { status: 201 });
     }
@@ -341,6 +356,23 @@ export async function POST(req: NextRequest) {
         statusLabel: "Pendente",
         summary: `${auth.user.name} sugeriu outro horario para esta reuniao.`,
       }),
+    });
+    await createAuditLog(req, auth.user, {
+      action: "requests.reschedule_created",
+      category: "requests",
+      targetType: "booking",
+      targetId: booking.id,
+      targetLabel: booking.title,
+      metadata: {
+        requestId: created.id,
+        roomName: booking.roomName,
+        date: booking.date,
+        startTime: booking.startTime,
+        endTime: booking.endTime,
+        requestedDate: data.requestedDate,
+        requestedStartTime: data.requestedStartTime,
+        requestedEndTime: data.requestedEndTime,
+      },
     });
 
     return NextResponse.json({ ok: true, request: requestDto(created) }, { status: 201 });
@@ -416,6 +448,18 @@ export async function PATCH(req: NextRequest) {
           summary: "O responsavel rejeitou sua sugestao; o horario original continua valendo.",
         }),
       });
+      await createAuditLog(req, auth.user, {
+        action: "requests.rejected",
+        category: "requests",
+        severity: "warning",
+        targetType: "booking_request",
+        targetId: request.id,
+        targetLabel: request.booking.title,
+        metadata: {
+          bookingId: request.bookingId,
+          requesterEmail: request.requesterEmail,
+        },
+      });
 
       return NextResponse.json({ ok: true, request: requestDto(updated) });
     }
@@ -462,6 +506,21 @@ export async function PATCH(req: NextRequest) {
         statusLabel: "Aceita",
         summary: "O responsavel aceitou sua sugestao como aviso, mas a reserva so muda quando ele editar o agendamento.",
       }),
+    });
+    await createAuditLog(req, auth.user, {
+      action: "requests.approved",
+      category: "requests",
+      severity: "warning",
+      targetType: "booking_request",
+      targetId: request.id,
+      targetLabel: request.booking.title,
+      metadata: {
+        bookingId: request.bookingId,
+        requesterEmail: request.requesterEmail,
+        requestedDate: request.requestedDate,
+        requestedStartTime: request.requestedStartTime,
+        requestedEndTime: request.requestedEndTime,
+      },
     });
 
     return NextResponse.json({ ok: true, request: requestDto(updated) });

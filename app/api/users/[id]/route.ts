@@ -3,6 +3,7 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { requireAdmin } from "@/lib/api-auth";
 import { isPeterfrutEmail, normEmail } from "@/lib/formatters";
+import { createAuditLog } from "@/lib/audit-log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -105,6 +106,21 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       },
     });
 
+    await createAuditLog(req, auth.user, {
+      action: "users.updated",
+      category: "users",
+      severity: data.role || typeof data.active === "boolean" ? "warning" : "info",
+      targetType: "user",
+      targetId: updated.id,
+      targetLabel: updated.email,
+      metadata: {
+        fields: Object.keys(data),
+        active: updated.active,
+        role: updated.role,
+        verified: updated.verified,
+      },
+    });
+
     return NextResponse.json({ ok: true, user: updated });
   } catch (e: unknown) {
     if (typeof e === "object" && e && "code" in e && e.code === "P2002") {
@@ -144,6 +160,18 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
 
   try {
     const deleted = await prisma.user.delete({ where: { id } });
+    await createAuditLog(req, auth.user, {
+      action: "users.deleted",
+      category: "users",
+      severity: "critical",
+      targetType: "user",
+      targetId: deleted.id,
+      targetLabel: deleted.email,
+      metadata: {
+        role: deleted.role,
+        active: deleted.active,
+      },
+    });
     return NextResponse.json({ ok: true, user: deleted });
   } catch {
     return NextResponse.json({ ok: false, message: "Erro ao deletar usuario" }, { status: 500 });

@@ -6,6 +6,7 @@ import { sendEmailVerification } from "@/lib/verify-email-mail";
 import { PASSWORD_RULES_MESSAGE, isPeterfrutEmail, normEmail, validatePassword } from "@/lib/formatters";
 import { getAppBaseUrl, getClientIp, retryAfterResponse } from "@/lib/security";
 import { createUrlToken, hashUrlToken } from "@/lib/token-security";
+import { createAuditLog } from "@/lib/audit-log";
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
@@ -83,6 +84,14 @@ export async function POST(req: NextRequest) {
       to: user.email,
       name: user.name,
       verifyUrl,
+    });
+
+    await createAuditLog(req, { id: user.id, name: user.name, email: user.email }, {
+      action: "users.registered",
+      category: "users",
+      targetType: "user",
+      targetId: user.id,
+      targetLabel: user.email,
     });
 
     return NextResponse.json({ ok: true });

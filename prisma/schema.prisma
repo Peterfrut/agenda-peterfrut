@@ -59,6 +59,32 @@ model User {
   notifications Notification[]
 }
 
+model AuditLog {
+  id          String   @id @default(cuid())
+  action      String
+  category    String
+  severity    String   @default("info")
+
+  actorId     String?
+  actorName   String?
+  actorEmail  String?
+
+  targetType  String?
+  targetId    String?
+  targetLabel String?
+
+  ip          String?
+  userAgent   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([category, createdAt])
+  @@index([action, createdAt])
+  @@index([actorEmail, createdAt])
+  @@index([targetType, createdAt])
+}
+
 model BookingChangeRequest {
   id             String   @id @default(cuid())
   bookingId      String

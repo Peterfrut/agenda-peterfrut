@@ -5,6 +5,7 @@ import { isPeterfrutEmail, normEmail } from "@/lib/formatters";
 import { rateLimit } from "@/lib/rate-limit";
 import { getAppBaseUrl, getClientIp, retryAfterResponse } from "@/lib/security";
 import { createUrlToken, hashUrlToken } from "@/lib/token-security";
+import { createAuditLog } from "@/lib/audit-log";
 
 export async function POST(req: NextRequest) {
   try {
@@ -53,6 +54,15 @@ export async function POST(req: NextRequest) {
       to: user.email,
       name: user.name,
       resetUrl: `${getAppBaseUrl()}/reset-password/${token}`,
+    });
+
+    await createAuditLog(req, { id: user.id, name: user.name, email: user.email }, {
+      action: "auth.password_reset_requested",
+      category: "auth",
+      severity: "warning",
+      targetType: "user",
+      targetId: user.id,
+      targetLabel: user.email,
     });
 
     return NextResponse.json({ ok: true });

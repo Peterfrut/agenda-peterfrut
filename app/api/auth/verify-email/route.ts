@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { rateLimit } from "@/lib/rate-limit";
 import { getClientIp, retryAfterResponse } from "@/lib/security";
 import { getUrlTokenLookupValues } from "@/lib/token-security";
+import { createAuditLog } from "@/lib/audit-log";
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
 
     const evt = await prisma.emailVerificationToken.findFirst({
       where: { OR: [{ token: tokenLookup.hashed }, { token: tokenLookup.raw }] },
-      select: { id: true, userId: true, usedAt: true, expiresAt: true },
+      select: { id: true, userId: true, usedAt: true, expiresAt: true, user: { select: { id: true, name: true, email: true } } },
     });
 
     if (!evt) {
@@ -47,6 +48,14 @@ export async function POST(req: NextRequest) {
         data: { usedAt: new Date() },
       }),
     ]);
+
+    await createAuditLog(req, { id: evt.user.id, name: evt.user.name, email: evt.user.email }, {
+      action: "auth.email_verified",
+      category: "auth",
+      targetType: "user",
+      targetId: evt.user.id,
+      targetLabel: evt.user.email,
+    });
 
     return NextResponse.json({ ok: true, code: "VERIFIED" });
   } catch (e) {

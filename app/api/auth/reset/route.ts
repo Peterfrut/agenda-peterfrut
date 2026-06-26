@@ -5,6 +5,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { PASSWORD_RULES_MESSAGE, validatePassword } from "@/lib/formatters";
 import { getClientIp, retryAfterResponse } from "@/lib/security";
 import { getUrlTokenLookupValues } from "@/lib/token-security";
+import { createAuditLog } from "@/lib/audit-log";
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
 
   const prt = await prisma.passwordResetToken.findFirst({
     where: { OR: [{ token: tokenLookup.hashed }, { token: tokenLookup.raw }] },
-    include: { user: { select: { id: true, active: true } } },
+    include: { user: { select: { id: true, name: true, email: true, active: true } } },
   });
 
   if (!prt || !prt.user.active) {
@@ -64,6 +65,15 @@ export async function POST(req: NextRequest) {
       data: { usedAt: new Date() },
     }),
   ]);
+
+  await createAuditLog(req, { id: prt.user.id, name: prt.user.name, email: prt.user.email }, {
+    action: "auth.password_reset_completed",
+    category: "auth",
+    severity: "warning",
+    targetType: "user",
+    targetId: prt.user.id,
+    targetLabel: prt.user.email,
+  });
 
   return NextResponse.json({ ok: true });
 }

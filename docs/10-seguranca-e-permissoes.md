@@ -45,6 +45,7 @@ Endpoints admin:
 - `PATCH /api/users/:id`
 - `DELETE /api/users/:id`
 - `POST /api/import`
+- `GET /api/audit-logs`
 
 O backend consulta o banco para confirmar role atual.
 
@@ -115,6 +116,32 @@ Cuidados implementados:
 - a interface renderiza os detalhes como texto React, sem HTML injetado;
 - notificacoes antigas sem `metadata` exibem fallback quando a solicitacao correspondente ainda existe no banco;
 - o polling do sino consulta somente `/api/notifications`, que ja filtra por usuario autenticado.
+
+## Logs de auditoria
+
+O sistema possui trilha de auditoria em `AuditLog`.
+
+Acesso:
+
+- somente admin;
+- exibido na pagina de usuarios, aba `Logs do sistema`;
+- endpoint `GET /api/audit-logs`.
+
+Eventos registrados:
+
+- login bem-sucedido, falha de login, login bloqueado e logout;
+- cadastro, confirmacao de e-mail e reset de senha;
+- atualizacao e exclusao de usuarios;
+- criacao, edicao, remarcacao e exclusao de agendamentos;
+- solicitacoes de convidados;
+- importacao ICS.
+
+Cuidados de seguranca:
+
+- senha, token, cookie, segredo, authorization e URLs sensiveis nao sao gravados nos metadados;
+- metadados sao limitados em tamanho e profundidade;
+- falha ao gravar log nao bloqueia a acao principal;
+- logs devem ser usados para auditoria administrativa, nao para armazenar stack trace ou dados sensiveis.
 
 ## Checklist de producao
 
