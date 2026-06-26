@@ -2,6 +2,8 @@
 
 O sistema possui job para enviar lembretes antes do horario da reserva.
 
+Importante: Next.js nao executa esse job sozinho. Em producao, configure um agendador externo para chamar o endpoint com `CRON_SECRET`.
+
 ## Endpoint recomendado
 
 ```text
@@ -16,10 +18,12 @@ A rota antiga `/api/jobs/remidenrs` existe por compatibilidade.
 1. Busca reservas:
   - `status = confirmed`
   - `reminderSent = false`
-2. Filtra reservas que comecam nos proximos 15 minutos.
+2. Filtra reservas que comecam nos proximos 10 minutos.
 3. Marca `reminderSent = true`.
 4. Envia e-mail.
 5. Se falhar, volta `reminderSent = false`.
+
+O calculo do horario usa explicitamente o fuso `America/Sao_Paulo`, para nao depender do timezone do servidor.
 
 ## Seguranca
 
@@ -65,6 +69,7 @@ Pode usar:
 {
   "ok": true,
   "checked": 10,
-  "reminded": 1
+  "reminded": 1,
+  "windowMinutes": 10
 }
 ```

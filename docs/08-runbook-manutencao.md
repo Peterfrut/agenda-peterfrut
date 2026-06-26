@@ -82,8 +82,10 @@ Verificar:
 - cron ativo;
 - `CRON_SECRET`;
 - header correto;
-- reservas nos proximos 15 minutos;
+- reservas nos proximos 10 minutos;
 - `reminderSent = false`.
+- job configurado para chamar `/api/jobs/reminders` a cada 5 minutos.
+- horario calculado no fuso `America/Sao_Paulo`.
 
 ## Importacao ICS
 

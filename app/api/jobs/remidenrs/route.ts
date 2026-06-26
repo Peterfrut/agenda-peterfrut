@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { DateTime } from "luxon";
 import {
   getTeamsUrlForRoom,
   sendBookingEmail,
@@ -8,8 +9,15 @@ import {
 import { createNotificationForEmail } from "@/lib/notifications";
 import { splitEmails } from "@/lib/formatters";
 
+const REMINDER_WINDOW_MINUTES = 10;
+const APP_TIME_ZONE = "America/Sao_Paulo";
+
 function buildStartDateTime(booking: { date: string; startTime: string }) {
-  return new Date(`${booking.date}T${booking.startTime}:00`);
+  const start = DateTime.fromISO(`${booking.date}T${booking.startTime}:00`, {
+    zone: APP_TIME_ZONE,
+  });
+
+  return start.isValid ? start.toJSDate() : null;
 }
 
 function reminderHref(booking: BookingLike) {
@@ -74,7 +82,7 @@ async function runReminderJob(req: NextRequest) {
   }
 
   const now = new Date();
-  const nowPlus15 = new Date(now.getTime() + 15 * 60 * 1000);
+  const windowEnd = new Date(now.getTime() + REMINDER_WINDOW_MINUTES * 60 * 1000);
 
   const candidates = await prisma.booking.findMany({
     where: {
@@ -85,7 +93,7 @@ async function runReminderJob(req: NextRequest) {
 
   const toRemind = candidates.filter((b) => {
     const start = buildStartDateTime(b);
-    return start > now && start <= nowPlus15;
+    return !!start && start > now && start <= windowEnd;
   });
 
   let reminded = 0;
@@ -114,6 +122,7 @@ async function runReminderJob(req: NextRequest) {
     ok: true,
     checked: candidates.length,
     reminded,
+    windowMinutes: REMINDER_WINDOW_MINUTES,
   });
 }
 

@@ -1,0 +1,21 @@
+name: Lembretes de agendamento
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  reminders:
+    runs-on: ubuntu-latest
+    environment: Production
+
+    steps:
+      - name: Chamar job de lembretes
+        run: |
+          curl -fsS -X POST "$APP_URL/api/jobs/reminders" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json"
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
